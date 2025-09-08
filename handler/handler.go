@@ -1,4 +1,4 @@
-package storage
+package handler
 
 import (
 	"context"
@@ -8,42 +8,46 @@ import (
 	"strings"
 	"time"
 
+	"github.com/darmawan01/storage/category"
+	"github.com/darmawan01/storage/errors"
+	"github.com/darmawan01/storage/interfaces"
 	"github.com/darmawan01/storage/middleware"
+	"github.com/google/uuid"
 	"github.com/minio/minio-go/v7"
 )
 
 // Handler represents a storage handler for a specific service/namespace
 type Handler struct {
-	name        string
-	config      *HandlerConfig
-	client      *minio.Client
-	registry    *Registry
-	buckets     map[string]string                      // category -> bucket name
-	middlewares map[string]*middleware.MiddlewareChain // category -> middleware chain
+	Name        string
+	Region      string
+	Config      *HandlerConfig
+	Client      *minio.Client
+	Buckets     map[string]string                      // category -> bucket name
+	Middlewares map[string]*middleware.MiddlewareChain // category -> middleware chain
 }
 
 // initialize sets up the handler and creates necessary buckets
-func (h *Handler) initialize() error {
-	h.buckets = make(map[string]string)
-	h.middlewares = make(map[string]*middleware.MiddlewareChain)
+func (h *Handler) Initialize() error {
+	h.Buckets = make(map[string]string)
+	h.Middlewares = make(map[string]*middleware.MiddlewareChain)
 
 	// Create buckets for each category
-	for category, categoryConfig := range h.config.Categories {
+	for category, categoryConfig := range h.Config.Categories {
 		bucketName := h.GetBucketName(category)
-		h.buckets[category] = bucketName
+		h.Buckets[category] = bucketName
 
 		// Create bucket if it doesn't exist
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 
-		exists, err := h.client.BucketExists(ctx, bucketName)
+		exists, err := h.Client.BucketExists(ctx, bucketName)
 		if err != nil {
 			return fmt.Errorf("failed to check bucket existence: %w", err)
 		}
 
 		if !exists {
-			err = h.client.MakeBucket(ctx, bucketName, minio.MakeBucketOptions{
-				Region: h.registry.config.Region,
+			err = h.Client.MakeBucket(ctx, bucketName, minio.MakeBucketOptions{
+				Region: h.Region,
 			})
 			if err != nil {
 				return fmt.Errorf("failed to create bucket %s: %w", bucketName, err)
@@ -66,28 +70,28 @@ func (h *Handler) initialize() error {
 
 // GetBucketName generates the bucket name for a category
 func (h *Handler) GetBucketName(category string) string {
-	categoryConfig, exists := h.config.Categories[category]
+	categoryConfig, exists := h.Config.Categories[category]
 	if !exists {
-		return fmt.Sprintf("%s-%s", h.config.BasePath, category)
+		return fmt.Sprintf("%s-%s", h.Config.BasePath, category)
 	}
-	return fmt.Sprintf("%s-%s", h.config.BasePath, categoryConfig.BucketSuffix)
+	return fmt.Sprintf("%s-%s", h.Config.BasePath, categoryConfig.BucketSuffix)
 }
 
 // GenerateFileKey creates a structured file key
 func (h *Handler) GenerateFileKey(entityType, entityID, fileType, filename string) string {
 	timestamp := time.Now().Unix()
-	uuid := generateUUID()
+
 	ext := filepath.Ext(filename)
 	return fmt.Sprintf("%s/%s/%s/%s/%d_%s%s",
-		h.config.BasePath, entityType, entityID, fileType, timestamp, uuid, ext)
+		h.Config.BasePath, entityType, entityID, fileType, timestamp, uuid.NewString(), ext)
 }
 
 // Upload uploads a file to the appropriate bucket
-func (h *Handler) Upload(ctx context.Context, req *UploadRequest) (*UploadResponse, error) {
+func (h *Handler) Upload(ctx context.Context, req *interfaces.UploadRequest) (*interfaces.UploadResponse, error) {
 	// Get category configuration
-	_, exists := h.config.Categories[req.Category]
+	_, exists := h.Config.Categories[req.Category]
 	if !exists {
-		return nil, &StorageError{Code: "CATEGORY_NOT_FOUND", Message: "Category " + req.Category + " not found"}
+		return nil, &errors.StorageError{Code: "CATEGORY_NOT_FOUND", Message: "Category " + req.Category + " not found"}
 	}
 
 	// Convert to middleware request
@@ -106,7 +110,7 @@ func (h *Handler) Upload(ctx context.Context, req *UploadRequest) (*UploadRespon
 	}
 
 	// Get middleware chain for this category
-	middlewareChain, exists := h.middlewares[req.Category]
+	middlewareChain, exists := h.Middlewares[req.Category]
 	if !exists {
 		return nil, fmt.Errorf("middleware chain not found for category %s", req.Category)
 	}
@@ -118,7 +122,7 @@ func (h *Handler) Upload(ctx context.Context, req *UploadRequest) (*UploadRespon
 	}
 
 	if !middlewareResp.Success {
-		return &UploadResponse{
+		return &interfaces.UploadResponse{
 			Success: false,
 			Error:   middlewareResp.Error,
 		}, nil
@@ -129,7 +133,7 @@ func (h *Handler) Upload(ctx context.Context, req *UploadRequest) (*UploadRespon
 
 	// Upload to MinIO
 	bucketName := h.GetBucketName(req.Category)
-	_, err = h.client.PutObject(ctx, bucketName, fileKey, req.FileData, req.FileSize, minio.PutObjectOptions{
+	_, err = h.Client.PutObject(ctx, bucketName, fileKey, req.FileData, req.FileSize, minio.PutObjectOptions{
 		ContentType: req.ContentType,
 		UserMetadata: map[string]string{
 			"original-filename": req.FileName,
@@ -145,9 +149,9 @@ func (h *Handler) Upload(ctx context.Context, req *UploadRequest) (*UploadRespon
 	}
 
 	// Convert middleware thumbnails to storage thumbnails
-	var thumbnails []ThumbnailInfo
+	var thumbnails []interfaces.ThumbnailInfo
 	for _, thumb := range middlewareResp.Thumbnails {
-		thumbnails = append(thumbnails, ThumbnailInfo{
+		thumbnails = append(thumbnails, interfaces.ThumbnailInfo{
 			Size:     thumb.Size,
 			URL:      thumb.URL,
 			Width:    thumb.Width,
@@ -156,7 +160,35 @@ func (h *Handler) Upload(ctx context.Context, req *UploadRequest) (*UploadRespon
 		})
 	}
 
-	return &UploadResponse{
+	// Create file metadata for callback
+	fileMetadata := &interfaces.FileMetadata{
+		ID:          uuid.NewString(),
+		FileName:    req.FileName,
+		FileKey:     fileKey,
+		FileSize:    req.FileSize,
+		ContentType: req.ContentType,
+		Category:    interfaces.FileCategory(req.Category),
+		Namespace:   h.Config.BasePath,
+		EntityType:  req.EntityType,
+		EntityID:    req.EntityID,
+		UploadedBy:  req.UserID,
+		UploadedAt:  time.Now(),
+		IsPublic:    h.isPublicFile(bucketName),
+		Thumbnails:  thumbnails,
+		Version:     1,
+		Checksum:    "", // Could be calculated if needed
+	}
+
+	// Call metadata callback if provided
+	if h.Config.MetadataCallback != nil {
+		if err := h.Config.MetadataCallback(ctx, fileMetadata); err != nil {
+			// Log error but don't fail the upload
+			// Users can handle this error in their callback implementation
+			fmt.Printf("Warning: metadata callback failed: %v\n", err)
+		}
+	}
+
+	return &interfaces.UploadResponse{
 		Success:     true,
 		FileKey:     fileKey,
 		FileSize:    req.FileSize,
@@ -167,7 +199,7 @@ func (h *Handler) Upload(ctx context.Context, req *UploadRequest) (*UploadRespon
 }
 
 // Download downloads a file from the appropriate bucket
-func (h *Handler) Download(ctx context.Context, req *DownloadRequest) (*DownloadResponse, error) {
+func (h *Handler) Download(ctx context.Context, req *interfaces.DownloadRequest) (*interfaces.DownloadResponse, error) {
 	// Find the file in buckets
 	_, bucketName, err := h.findFile(ctx, req.FileKey)
 	if err != nil {
@@ -175,7 +207,7 @@ func (h *Handler) Download(ctx context.Context, req *DownloadRequest) (*Download
 	}
 
 	// Download from MinIO
-	object, err := h.client.GetObject(ctx, bucketName, req.FileKey, minio.GetObjectOptions{})
+	object, err := h.Client.GetObject(ctx, bucketName, req.FileKey, minio.GetObjectOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to download file: %w", err)
 	}
@@ -186,7 +218,7 @@ func (h *Handler) Download(ctx context.Context, req *DownloadRequest) (*Download
 		return nil, fmt.Errorf("failed to get object info: %w", err)
 	}
 
-	return &DownloadResponse{
+	return &interfaces.DownloadResponse{
 		Success:     true,
 		FileData:    object,
 		FileSize:    objInfo.Size,
@@ -200,7 +232,7 @@ func (h *Handler) Download(ctx context.Context, req *DownloadRequest) (*Download
 }
 
 // Delete deletes a file from the appropriate bucket
-func (h *Handler) Delete(ctx context.Context, req *DeleteRequest) error {
+func (h *Handler) Delete(ctx context.Context, req *interfaces.DeleteRequest) error {
 	// Find the file in buckets
 	_, bucketName, err := h.findFile(ctx, req.FileKey)
 	if err != nil {
@@ -208,16 +240,20 @@ func (h *Handler) Delete(ctx context.Context, req *DeleteRequest) error {
 	}
 
 	// Delete from MinIO
-	err = h.client.RemoveObject(ctx, bucketName, req.FileKey, minio.RemoveObjectOptions{})
+	err = h.Client.RemoveObject(ctx, bucketName, req.FileKey, minio.RemoveObjectOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to delete file: %w", err)
 	}
+
+	// Note: For metadata cleanup, users should implement their own cleanup logic
+	// in their metadata storage system (database, Redis, etc.)
+	// This library focuses only on MinIO operations
 
 	return nil
 }
 
 // Preview generates a preview URL for a file
-func (h *Handler) Preview(ctx context.Context, req *PreviewRequest) (*PreviewResponse, error) {
+func (h *Handler) Preview(ctx context.Context, req *interfaces.PreviewRequest) (*interfaces.PreviewResponse, error) {
 	// Find the file in buckets
 	fileInfo, bucketName, err := h.findFile(ctx, req.FileKey)
 	if err != nil {
@@ -228,12 +264,12 @@ func (h *Handler) Preview(ctx context.Context, req *PreviewRequest) (*PreviewRes
 	objInfo := fileInfo.(*minio.ObjectInfo)
 
 	// Generate presigned URL for preview (expires in 1 hour)
-	previewURL, err := h.client.PresignedGetObject(ctx, bucketName, req.FileKey, time.Hour, nil)
+	previewURL, err := h.Client.PresignedGetObject(ctx, bucketName, req.FileKey, time.Hour, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate preview URL: %w", err)
 	}
 
-	return &PreviewResponse{
+	return &interfaces.PreviewResponse{
 		Success:     true,
 		PreviewURL:  previewURL.String(),
 		ContentType: objInfo.ContentType,
@@ -247,7 +283,7 @@ func (h *Handler) Preview(ctx context.Context, req *PreviewRequest) (*PreviewRes
 }
 
 // Thumbnail generates a thumbnail for a file
-func (h *Handler) Thumbnail(ctx context.Context, req *ThumbnailRequest) (*ThumbnailResponse, error) {
+func (h *Handler) Thumbnail(ctx context.Context, req *interfaces.ThumbnailRequest) (*interfaces.ThumbnailResponse, error) {
 	// Find the file in buckets
 	fileInfo, bucketName, err := h.findFile(ctx, req.FileKey)
 	if err != nil {
@@ -259,16 +295,16 @@ func (h *Handler) Thumbnail(ctx context.Context, req *ThumbnailRequest) (*Thumbn
 
 	// Check if thumbnail generation is supported for this file type
 	if !h.supportsThumbnail(objInfo.ContentType) {
-		return nil, &StorageError{Code: "THUMBNAIL_NOT_SUPPORTED", Message: "Thumbnail generation not supported for this file type"}
+		return nil, &errors.StorageError{Code: "THUMBNAIL_NOT_SUPPORTED", Message: "Thumbnail generation not supported for this file type"}
 	}
 
 	// Generate presigned URL for thumbnail (expires in 1 hour)
-	thumbnailURL, err := h.client.PresignedGetObject(ctx, bucketName, req.FileKey, time.Hour, nil)
+	thumbnailURL, err := h.Client.PresignedGetObject(ctx, bucketName, req.FileKey, time.Hour, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate thumbnail URL: %w", err)
 	}
 
-	return &ThumbnailResponse{
+	return &interfaces.ThumbnailResponse{
 		Success:      true,
 		ThumbnailURL: thumbnailURL.String(),
 		Size:         req.Size,
@@ -281,7 +317,7 @@ func (h *Handler) Thumbnail(ctx context.Context, req *ThumbnailRequest) (*Thumbn
 }
 
 // Stream streams a file from the appropriate bucket
-func (h *Handler) Stream(ctx context.Context, req *StreamRequest) (*StreamResponse, error) {
+func (h *Handler) Stream(ctx context.Context, req *interfaces.StreamRequest) (*interfaces.StreamResponse, error) {
 	// Find the file in buckets
 	fileInfo, bucketName, err := h.findFile(ctx, req.FileKey)
 	if err != nil {
@@ -298,12 +334,12 @@ func (h *Handler) Stream(ctx context.Context, req *StreamRequest) (*StreamRespon
 		opts.SetRange(0, 0) // Placeholder - would parse actual range
 	}
 
-	object, err := h.client.GetObject(ctx, bucketName, req.FileKey, opts)
+	object, err := h.Client.GetObject(ctx, bucketName, req.FileKey, opts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to stream file: %w", err)
 	}
 
-	return &StreamResponse{
+	return &interfaces.StreamResponse{
 		Success:     true,
 		FileData:    object,
 		FileSize:    objInfo.Size,
@@ -318,7 +354,7 @@ func (h *Handler) Stream(ctx context.Context, req *StreamRequest) (*StreamRespon
 }
 
 // GeneratePresignedURL generates a presigned URL for a file
-func (h *Handler) GeneratePresignedURL(ctx context.Context, req *PresignedURLRequest) (*PresignedURLResponse, error) {
+func (h *Handler) GeneratePresignedURL(ctx context.Context, req *interfaces.PresignedURLRequest) (*interfaces.PresignedURLResponse, error) {
 	// Find the file in buckets
 	_, bucketName, err := h.findFile(ctx, req.FileKey)
 	if err != nil {
@@ -329,9 +365,9 @@ func (h *Handler) GeneratePresignedURL(ctx context.Context, req *PresignedURLReq
 	var url *url.URL
 	switch req.Action {
 	case "GET":
-		url, err = h.client.PresignedGetObject(ctx, bucketName, req.FileKey, req.Expires, nil)
+		url, err = h.Client.PresignedGetObject(ctx, bucketName, req.FileKey, req.Expires, nil)
 	case "PUT":
-		url, err = h.client.PresignedPutObject(ctx, bucketName, req.FileKey, req.Expires)
+		url, err = h.Client.PresignedPutObject(ctx, bucketName, req.FileKey, req.Expires)
 	default:
 		return nil, fmt.Errorf("unsupported action: %s", req.Action)
 	}
@@ -340,7 +376,7 @@ func (h *Handler) GeneratePresignedURL(ctx context.Context, req *PresignedURLReq
 		return nil, fmt.Errorf("failed to generate presigned URL: %w", err)
 	}
 
-	return &PresignedURLResponse{
+	return &interfaces.PresignedURLResponse{
 		Success:   true,
 		URL:       url.String(),
 		ExpiresAt: time.Now().Add(req.Expires),
@@ -353,20 +389,22 @@ func (h *Handler) GeneratePresignedURL(ctx context.Context, req *PresignedURLReq
 }
 
 // ListFiles lists files for a specific entity
-func (h *Handler) ListFiles(ctx context.Context, req *ListRequest) (*ListResponse, error) {
-	// This is a simplified implementation
-	// In a real implementation, you would query a metadata database
-	return &ListResponse{
+// Note: This is a simplified implementation that returns empty results
+// For file listing, users should implement their own metadata storage and querying
+func (h *Handler) ListFiles(ctx context.Context, req *interfaces.ListRequest) (*interfaces.ListResponse, error) {
+	// This library focuses on MinIO operations only
+	// File listing requires external metadata storage (database, Redis, etc.)
+	return &interfaces.ListResponse{
 		Success: true,
-		Files:   []FileInfo{},
+		Files:   []interfaces.FileInfo{},
 		Total:   0,
 		Limit:   req.Limit,
 		Offset:  req.Offset,
 	}, nil
 }
 
-// GetFileInfo retrieves file information
-func (h *Handler) GetFileInfo(ctx context.Context, req *InfoRequest) (*FileInfo, error) {
+// GetFileInfo retrieves file information from MinIO
+func (h *Handler) GetFileInfo(ctx context.Context, req *interfaces.InfoRequest) (*interfaces.FileInfo, error) {
 	// Find the file in buckets
 	fileInfo, bucketName, err := h.findFile(ctx, req.FileKey)
 	if err != nil {
@@ -377,8 +415,8 @@ func (h *Handler) GetFileInfo(ctx context.Context, req *InfoRequest) (*FileInfo,
 	objInfo := fileInfo.(*minio.ObjectInfo)
 
 	// Convert to FileInfo
-	return &FileInfo{
-		ID:          generateUUID(),
+	return &interfaces.FileInfo{
+		ID:          uuid.NewString(),
 		FileName:    objInfo.Key,
 		FileKey:     objInfo.Key,
 		FileSize:    objInfo.Size,
@@ -394,18 +432,17 @@ func (h *Handler) GetFileInfo(ctx context.Context, req *InfoRequest) (*FileInfo,
 }
 
 // UpdateMetadata updates file metadata
-func (h *Handler) UpdateMetadata(ctx context.Context, req *UpdateMetadataRequest) error {
-	// Find the file in buckets
-	_, bucketName, err := h.findFile(ctx, req.FileKey)
+// Note: This is a simplified implementation that only verifies file existence
+// For complex metadata operations, users should implement their own metadata storage
+func (h *Handler) UpdateMetadata(ctx context.Context, req *interfaces.UpdateMetadataRequest) error {
+	// Just verify file exists
+	_, _, err := h.findFile(ctx, req.FileKey)
 	if err != nil {
 		return err
 	}
 
-	// Update metadata in MinIO
-	// Note: This is a simplified implementation
-	// In a real implementation, you would update metadata in a database
-	_ = bucketName // Suppress unused variable warning
-
+	// Note: This library focuses on MinIO operations only
+	// Complex metadata operations should be handled by external systems
 	return nil
 }
 
@@ -413,20 +450,20 @@ func (h *Handler) UpdateMetadata(ctx context.Context, req *UpdateMetadataRequest
 
 func (h *Handler) findFile(ctx context.Context, fileKey string) (interface{}, string, error) {
 	// Search through all buckets for the file
-	for _, bucketName := range h.buckets {
-		object, err := h.client.StatObject(ctx, bucketName, fileKey, minio.StatObjectOptions{})
+	for _, bucketName := range h.Buckets {
+		object, err := h.Client.StatObject(ctx, bucketName, fileKey, minio.StatObjectOptions{})
 		if err == nil {
 			return &object, bucketName, nil
 		}
 		// Continue searching if file not found in this bucket
 	}
 
-	return nil, "", &StorageError{Code: "FILE_NOT_FOUND", Message: "File not found"}
+	return nil, "", &errors.StorageError{Code: "FILE_NOT_FOUND", Message: "File not found"}
 }
 
 func (h *Handler) isPublicFile(bucketName string) bool {
 	// Check if the bucket is configured as public
-	for _, categoryConfig := range h.config.Categories {
+	for _, categoryConfig := range h.Config.Categories {
 		if h.GetBucketName(categoryConfig.BucketSuffix) == bucketName {
 			return categoryConfig.IsPublic
 		}
@@ -444,7 +481,7 @@ func (h *Handler) supportsThumbnail(contentType string) bool {
 	return false
 }
 
-func (h *Handler) setBucketPolicy(ctx context.Context, bucketName string, categoryConfig CategoryConfig) error {
+func (h *Handler) setBucketPolicy(ctx context.Context, bucketName string, categoryConfig category.CategoryConfig) error {
 	if categoryConfig.IsPublic {
 		// Set public read policy
 		policy := `{
@@ -458,7 +495,7 @@ func (h *Handler) setBucketPolicy(ctx context.Context, bucketName string, catego
 				}
 			]
 		}`
-		return h.client.SetBucketPolicy(ctx, bucketName, policy)
+		return h.Client.SetBucketPolicy(ctx, bucketName, policy)
 	}
 	// For private buckets, no policy is set (default private)
 	return nil
@@ -466,8 +503,8 @@ func (h *Handler) setBucketPolicy(ctx context.Context, bucketName string, catego
 
 func (h *Handler) HealthCheck(ctx context.Context) error {
 	// Check if all required buckets exist
-	for category, bucketName := range h.buckets {
-		exists, err := h.client.BucketExists(ctx, bucketName)
+	for category, bucketName := range h.Buckets {
+		exists, err := h.Client.BucketExists(ctx, bucketName)
 		if err != nil {
 			return fmt.Errorf("failed to check bucket %s: %w", bucketName, err)
 		}
@@ -484,14 +521,14 @@ func (h *Handler) Close() error {
 }
 
 // setupMiddlewares sets up middleware chains for a category
-func (h *Handler) setupMiddlewares(category string, categoryConfig CategoryConfig) error {
+func (h *Handler) setupMiddlewares(category string, categoryConfig category.CategoryConfig) error {
 	chain := middleware.NewMiddlewareChain()
 
 	// Get middleware names for this category
 	middlewareNames := categoryConfig.Middlewares
 	if len(middlewareNames) == 0 {
 		// Use default middlewares from handler config
-		middlewareNames = h.config.Middlewares
+		middlewareNames = h.Config.Middlewares
 	}
 
 	// Add middlewares to chain
@@ -503,30 +540,55 @@ func (h *Handler) setupMiddlewares(category string, categoryConfig CategoryConfi
 		chain.Add(middleware)
 	}
 
-	h.middlewares[category] = chain
+	h.Middlewares[category] = chain
 	return nil
 }
 
 // createMiddleware creates a middleware instance
-func (h *Handler) createMiddleware(name, category string, categoryConfig CategoryConfig) (middleware.Middleware, error) {
+func (h *Handler) createMiddleware(name, category string, categoryConfig category.CategoryConfig) (middleware.Middleware, error) {
 	switch name {
 	case "security":
 		securityConfig := categoryConfig.Security
-		if securityConfig.RequireAuth == false && securityConfig.RequireOwner == false {
+		if !securityConfig.RequireAuth && !securityConfig.RequireOwner {
 			// Use handler default security config
-			securityConfig = h.config.Security
+			securityConfig = h.Config.Security
 		}
-		return middleware.NewSecurityMiddleware(securityConfig, h.client), nil
+
+		return middleware.NewSecurityMiddleware(securityConfig, h.Client), nil
 
 	case "validation":
 		validationConfig := categoryConfig.Validation
-		return middleware.NewValidationMiddleware(validationConfig), nil
+		// Convert storage.ValidationConfig to middleware.ValidationConfig
+		middlewareValidationConfig := middleware.ValidationConfig{
+			MaxFileSize:       validationConfig.MaxFileSize,
+			MinFileSize:       validationConfig.MinFileSize,
+			AllowedTypes:      validationConfig.AllowedTypes,
+			AllowedExtensions: validationConfig.AllowedExtensions,
+		}
+
+		if validationConfig.ImageValidation != nil {
+			middlewareValidationConfig.ImageValidation = (*middleware.ImageValidationConfig)(validationConfig.ImageValidation)
+		}
+
+		if validationConfig.PDFValidation != nil {
+			middlewareValidationConfig.PDFValidation = (*middleware.PDFValidationConfig)(validationConfig.PDFValidation)
+		}
+
+		if validationConfig.VideoValidation != nil {
+			middlewareValidationConfig.VideoValidation = (*middleware.VideoValidationConfig)(validationConfig.VideoValidation)
+		}
+
+		if validationConfig.AudioValidation != nil {
+			middlewareValidationConfig.AudioValidation = (*middleware.AudioValidationConfig)(validationConfig.AudioValidation)
+		}
+
+		return middleware.NewValidationMiddleware(middlewareValidationConfig), nil
 
 	case "thumbnail":
 		previewConfig := categoryConfig.Preview
 		if !previewConfig.GenerateThumbnails {
 			// Use handler default preview config
-			previewConfig = h.config.Preview
+			previewConfig = h.Config.Preview
 		}
 		thumbnailConfig := middleware.ThumbnailConfig{
 			GenerateThumbnails: previewConfig.GenerateThumbnails,
@@ -534,13 +596,13 @@ func (h *Handler) createMiddleware(name, category string, categoryConfig Categor
 			ThumbnailBucket:    h.GetBucketName("thumbnail"),
 			ThumbnailPrefix:    "thumbnails",
 		}
-		return middleware.NewThumbnailMiddleware(thumbnailConfig, h.client), nil
+		return middleware.NewThumbnailMiddleware(thumbnailConfig, h.Client), nil
 
 	case "encryption":
 		securityConfig := categoryConfig.Security
 		if !securityConfig.EncryptAtRest {
 			// Use handler default security config
-			securityConfig = h.config.Security
+			securityConfig = h.Config.Security
 		}
 		encryptionConfig := middleware.EncryptionConfig{
 			Enabled:       securityConfig.EncryptAtRest,
@@ -565,7 +627,7 @@ func (h *Handler) createMiddleware(name, category string, categoryConfig Categor
 		previewConfig := categoryConfig.Preview
 		if !previewConfig.UseCDN {
 			// Use handler default preview config
-			previewConfig = h.config.Preview
+			previewConfig = h.Config.Preview
 		}
 		cdnConfig := middleware.CDNConfig{
 			Enabled:     previewConfig.UseCDN,
@@ -578,11 +640,4 @@ func (h *Handler) createMiddleware(name, category string, categoryConfig Categor
 	default:
 		return nil, fmt.Errorf("unknown middleware: %s", name)
 	}
-}
-
-// Utility functions
-
-func generateUUID() string {
-	// Simple UUID generation - in production, use a proper UUID library
-	return fmt.Sprintf("%d", time.Now().UnixNano())
 }

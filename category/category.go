@@ -1,30 +1,9 @@
-package storage
+package category
 
 import (
-	"time"
+	"github.com/darmawan01/storage/errors"
+	"github.com/darmawan01/storage/middleware"
 )
-
-// StorageConfig represents the central storage configuration
-type StorageConfig struct {
-	Endpoint        string `json:"endpoint"`
-	AccessKey       string `json:"access_key"`
-	SecretKey       string `json:"secret_key"`
-	UseSSL          bool   `json:"use_ssl"`
-	Region          string `json:"region"`
-	BucketName      string `json:"bucket_name"`
-	MaxFileSize     int64  `json:"max_file_size"`
-	UploadTimeout   int    `json:"upload_timeout"`
-	DownloadTimeout int    `json:"download_timeout"`
-}
-
-// HandlerConfig represents handler-specific configuration
-type HandlerConfig struct {
-	BasePath    string                    `json:"base_path"`
-	Middlewares []string                  `json:"middlewares"` // Default middlewares for all categories
-	Categories  map[string]CategoryConfig `json:"categories"`
-	Security    SecurityConfig            `json:"security,omitempty"`
-	Preview     PreviewConfig             `json:"preview,omitempty"`
-}
 
 // CategoryConfig represents category-specific configuration
 type CategoryConfig struct {
@@ -40,7 +19,7 @@ type CategoryConfig struct {
 	Middlewares []string `json:"middlewares,omitempty"`
 
 	// Category-specific security
-	Security SecurityConfig `json:"security,omitempty"`
+	Security middleware.SecurityConfig `json:"security,omitempty"`
 
 	// Category-specific preview settings
 	Preview PreviewConfig `json:"preview,omitempty"`
@@ -146,22 +125,6 @@ type AudioValidationConfig struct {
 	MaxSampleRate int `json:"max_sample_rate,omitempty"` // Hz
 }
 
-// SecurityConfig represents security configuration
-type SecurityConfig struct {
-	// Access control
-	RequireAuth  bool     `json:"require_auth,omitempty"`
-	RequireOwner bool     `json:"require_owner,omitempty"`
-	RequireRole  []string `json:"require_role,omitempty"`
-
-	// File security
-	EncryptAtRest     bool `json:"encrypt_at_rest,omitempty"`
-	GenerateThumbnail bool `json:"generate_thumbnail,omitempty"`
-
-	// URL security
-	PresignedURLExpiry time.Duration `json:"presigned_url_expiry,omitempty"`
-	MaxDownloadCount   int           `json:"max_download_count,omitempty"`
-}
-
 // PreviewConfig represents preview configuration
 type PreviewConfig struct {
 	// Thumbnail settings
@@ -177,37 +140,14 @@ type PreviewConfig struct {
 	CDNEndpoint string `json:"cdn_endpoint,omitempty"`
 }
 
-// Default configurations
-func DefaultStorageConfig() StorageConfig {
-	return StorageConfig{
-		Endpoint:        "localhost:9000",
-		AccessKey:       "minioadmin",
-		SecretKey:       "minioadmin",
-		UseSSL:          false,
-		Region:          "us-east-1",
-		BucketName:      "myapp-storage",
-		MaxFileSize:     25 * 1024 * 1024, // 25MB
-		UploadTimeout:   300,              // 5 minutes
-		DownloadTimeout: 60,               // 1 minute
+func (c *CategoryConfig) Validate() error {
+	if c.BucketSuffix == "" {
+		return &errors.StorageError{Code: "INVALID_CONFIG", Message: "BucketSuffix is required"}
 	}
-}
-
-func DefaultHandlerConfig(basePath string) HandlerConfig {
-	return HandlerConfig{
-		BasePath:   basePath,
-		Categories: make(map[string]CategoryConfig),
-		Security: SecurityConfig{
-			RequireAuth:        true,
-			PresignedURLExpiry: 24 * time.Hour,
-			MaxDownloadCount:   100,
-		},
-		Preview: PreviewConfig{
-			GenerateThumbnails: true,
-			ThumbnailSizes:     []string{"150x150", "300x300", "600x600"},
-			EnablePreview:      true,
-			PreviewFormats:     []string{"image", "pdf"},
-		},
+	if c.MaxSize <= 0 {
+		return &errors.StorageError{Code: "INVALID_CONFIG", Message: "MaxSize must be greater than 0"}
 	}
+	return nil
 }
 
 func DefaultCategoryConfig(bucketSuffix string, isPublic bool, maxSize int64) CategoryConfig {
@@ -220,7 +160,7 @@ func DefaultCategoryConfig(bucketSuffix string, isPublic bool, maxSize int64) Ca
 			MaxFileSize: maxSize,
 			MinFileSize: 1024, // 1KB minimum
 		},
-		Security: SecurityConfig{
+		Security: middleware.SecurityConfig{
 			RequireAuth:  !isPublic,
 			RequireOwner: !isPublic,
 		},
@@ -229,48 +169,4 @@ func DefaultCategoryConfig(bucketSuffix string, isPublic bool, maxSize int64) Ca
 			EnablePreview:      false,
 		},
 	}
-}
-
-// Helper functions for configuration validation
-func (c *StorageConfig) Validate() error {
-	if c.Endpoint == "" {
-		return &StorageError{Code: "INVALID_CONFIG", Message: "Endpoint is required"}
-	}
-	if c.AccessKey == "" {
-		return &StorageError{Code: "INVALID_CONFIG", Message: "AccessKey is required"}
-	}
-	if c.SecretKey == "" {
-		return &StorageError{Code: "INVALID_CONFIG", Message: "SecretKey is required"}
-	}
-	if c.MaxFileSize <= 0 {
-		return &StorageError{Code: "INVALID_CONFIG", Message: "MaxFileSize must be greater than 0"}
-	}
-	return nil
-}
-
-func (c *HandlerConfig) Validate() error {
-	if c.BasePath == "" {
-		return &StorageError{Code: "INVALID_CONFIG", Message: "BasePath is required"}
-	}
-	if len(c.Categories) == 0 {
-		return &StorageError{Code: "INVALID_CONFIG", Message: "At least one category must be defined"}
-	}
-
-	for name, category := range c.Categories {
-		if err := category.Validate(); err != nil {
-			return &StorageError{Code: "INVALID_CONFIG", Message: "Category " + name + " is invalid: " + err.Error()}
-		}
-	}
-
-	return nil
-}
-
-func (c *CategoryConfig) Validate() error {
-	if c.BucketSuffix == "" {
-		return &StorageError{Code: "INVALID_CONFIG", Message: "BucketSuffix is required"}
-	}
-	if c.MaxSize <= 0 {
-		return &StorageError{Code: "INVALID_CONFIG", Message: "MaxSize must be greater than 0"}
-	}
-	return nil
 }

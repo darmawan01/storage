@@ -1,0 +1,701 @@
+basePath: /api/v1
+definitions:
+  main.FileInfo:
+    properties:
+      category:
+        example: profile
+        type: string
+      content_type:
+        example: image/jpeg
+        type: string
+      file_id:
+        example: user_123_profile_abc123.jpg
+        type: string
+      file_name:
+        example: profile.jpg
+        type: string
+      file_size:
+        example: 1024000
+        type: integer
+      metadata:
+        additionalProperties: true
+        type: object
+      uploaded_at:
+        example: "2023-12-01T10:30:00Z"
+        type: string
+    type: object
+  main.ListFilesResponse:
+    properties:
+      files:
+        items:
+          $ref: '#/definitions/main.FileInfo'
+        type: array
+      limit:
+        example: 50
+        type: integer
+      offset:
+        example: 0
+        type: integer
+      total:
+        example: 25
+        type: integer
+    type: object
+  main.SuccessResponse:
+    properties:
+      data: {}
+      message:
+        example: Operation completed successfully
+        type: string
+      success:
+        example: true
+        type: boolean
+    type: object
+  main.ThumbnailInfo:
+    properties:
+      file_size:
+        example: 25600
+        type: integer
+      size:
+        example: 150x150
+        type: string
+      url:
+        example: /api/v1/files/abc123/thumbnail?size=150x150
+        type: string
+    type: object
+  main.UploadResponse:
+    properties:
+      category:
+        example: profile
+        type: string
+      content_type:
+        example: image/jpeg
+        type: string
+      entity_id:
+        example: "123"
+        type: string
+      entity_type:
+        example: user
+        type: string
+      file_id:
+        example: user_123_profile_abc123.jpg
+        type: string
+      file_name:
+        example: profile.jpg
+        type: string
+      file_size:
+        example: 1024000
+        type: integer
+      metadata:
+        additionalProperties: true
+        type: object
+      thumbnails:
+        items:
+          $ref: '#/definitions/main.ThumbnailInfo'
+        type: array
+      uploaded_at:
+        example: "2023-12-01T10:30:00Z"
+        type: string
+    type: object
+externalDocs:
+  description: OpenAPI
+  url: https://swagger.io/resources/open-api/
+host: localhost:8080
+info:
+  contact:
+    email: support@swagger.io
+    name: API Support
+    url: http://www.swagger.io/support
+  description: A comprehensive file storage API built with MinIO, supporting user
+    profiles, documents, and courier files with advanced validation, security, and
+    preview features.
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+  termsOfService: http://swagger.io/terms/
+  title: MinIO Storage API
+  version: "1.0"
+paths:
+  /couriers/{id}/document/upload:
+    post:
+      consumes:
+      - multipart/form-data
+      description: Upload a document for a specific courier (not implemented in demo)
+      parameters:
+      - description: Courier ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Document file
+        in: formData
+        name: file
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Not implemented in demo
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Upload Courier Document
+      tags:
+      - Couriers
+  /couriers/{id}/files:
+    get:
+      consumes:
+      - application/json
+      description: List all files belonging to a specific courier (not implemented
+        in demo)
+      parameters:
+      - description: Courier ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Not implemented in demo
+          schema:
+            additionalProperties: true
+            type: object
+      summary: List Courier Files
+      tags:
+      - Couriers
+  /couriers/{id}/files/{fileId}:
+    delete:
+      consumes:
+      - application/json
+      description: Delete a file belonging to a specific courier (not implemented
+        in demo)
+      parameters:
+      - description: Courier ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: File ID
+        in: path
+        name: fileId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Not implemented in demo
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Delete Courier File
+      tags:
+      - Couriers
+    get:
+      consumes:
+      - application/json
+      description: Download a file belonging to a specific courier (not implemented
+        in demo)
+      parameters:
+      - description: Courier ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: File ID
+        in: path
+        name: fileId
+        required: true
+        type: string
+      produces:
+      - application/octet-stream
+      responses:
+        "200":
+          description: Not implemented in demo
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Get Courier File
+      tags:
+      - Couriers
+  /couriers/{id}/vehicle/upload:
+    post:
+      consumes:
+      - multipart/form-data
+      description: Upload a vehicle image for a specific courier (not implemented
+        in demo)
+      parameters:
+      - description: Courier ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Vehicle image file
+        in: formData
+        name: file
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Not implemented in demo
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Upload Courier Vehicle Image
+      tags:
+      - Couriers
+  /files/{fileId}/preview:
+    get:
+      consumes:
+      - application/json
+      description: Get a preview of a file with specified size (not implemented in
+        demo)
+      parameters:
+      - description: File ID
+        in: path
+        name: fileId
+        required: true
+        type: string
+      - description: 'Preview size (default: 300x300)'
+        in: query
+        name: size
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Not implemented in demo
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Preview File
+      tags:
+      - Files
+  /files/{fileId}/stream:
+    get:
+      consumes:
+      - application/json
+      description: Stream a file with range support for partial content (not implemented
+        in demo)
+      parameters:
+      - description: File ID
+        in: path
+        name: fileId
+        required: true
+        type: string
+      - description: Range header for partial content
+        in: header
+        name: Range
+        type: string
+      produces:
+      - application/octet-stream
+      responses:
+        "200":
+          description: File content
+          schema:
+            type: file
+        "206":
+          description: Partial file content
+          schema:
+            type: file
+      summary: Stream File
+      tags:
+      - Files
+  /files/{fileId}/thumbnail:
+    get:
+      consumes:
+      - application/json
+      description: Get a thumbnail of a file with specified size (not implemented
+        in demo)
+      parameters:
+      - description: File ID
+        in: path
+        name: fileId
+        required: true
+        type: string
+      - description: 'Thumbnail size (default: 150x150)'
+        in: query
+        name: size
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Not implemented in demo
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Get File Thumbnail
+      tags:
+      - Files
+  /health:
+    get:
+      consumes:
+      - application/json
+      description: Check the health status of the storage API service
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Service is healthy
+          schema:
+            additionalProperties: true
+            type: object
+        "503":
+          description: Service is unhealthy
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Health Check
+      tags:
+      - System
+  /test/download:
+    get:
+      consumes:
+      - application/json
+      description: Get instructions for testing file download functionality
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Download test instructions
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Test Download Endpoint
+      tags:
+      - Test
+  /test/upload:
+    get:
+      consumes:
+      - application/json
+      description: Get instructions for testing file upload functionality
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Upload test instructions
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Test Upload Endpoint
+      tags:
+      - Test
+  /test/validation:
+    get:
+      consumes:
+      - application/json
+      description: Get validation rules and requirements for file uploads
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Validation rules and requirements
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Test Validation Endpoint
+      tags:
+      - Test
+  /users/{id}/documents/upload:
+    post:
+      consumes:
+      - multipart/form-data
+      description: Upload a document for a specific user with metadata validation
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Document file (PDF, JPEG, PNG)
+        in: formData
+        name: file
+        required: true
+        type: file
+      - description: Document title
+        in: formData
+        name: title
+        required: true
+        type: string
+      - description: Document author
+        in: formData
+        name: author
+        required: true
+        type: string
+      - description: Document description
+        in: formData
+        name: description
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Document uploaded successfully
+          schema:
+            allOf:
+            - $ref: '#/definitions/main.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/main.UploadResponse'
+              type: object
+        "400":
+          description: Bad request - validation error
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+        "413":
+          description: File too large
+          schema:
+            additionalProperties: true
+            type: object
+        "503":
+          description: Service unavailable
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Upload User Document
+      tags:
+      - Users
+  /users/{id}/files:
+    get:
+      consumes:
+      - application/json
+      description: List all files belonging to a specific user with optional filtering
+        by category
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Filter by category (profile, document)
+        in: query
+        name: category
+        type: string
+      - description: 'Maximum number of files to return (default: 50)'
+        in: query
+        name: limit
+        type: integer
+      - description: 'Number of files to skip (default: 0)'
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of user files
+          schema:
+            allOf:
+            - $ref: '#/definitions/main.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/main.ListFilesResponse'
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Forbidden - access denied
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties: true
+            type: object
+        "503":
+          description: Service unavailable
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: List User Files
+      tags:
+      - Users
+  /users/{id}/files/{category}/{fileId}:
+    delete:
+      consumes:
+      - application/json
+      description: Delete a file belonging to a specific user by file ID and category
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: File category (profile, document)
+        in: path
+        name: category
+        required: true
+        type: string
+      - description: File ID
+        in: path
+        name: fileId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: File deleted successfully
+          schema:
+            $ref: '#/definitions/main.SuccessResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Forbidden - access denied
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: File not found
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties: true
+            type: object
+        "503":
+          description: Service unavailable
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Delete User File
+      tags:
+      - Users
+    get:
+      consumes:
+      - application/json
+      description: Download a file belonging to a specific user by file ID and category
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: File category (profile, document)
+        in: path
+        name: category
+        required: true
+        type: string
+      - description: File ID
+        in: path
+        name: fileId
+        required: true
+        type: string
+      produces:
+      - application/octet-stream
+      responses:
+        "200":
+          description: File content
+          schema:
+            type: file
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Forbidden - access denied
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: File not found
+          schema:
+            additionalProperties: true
+            type: object
+        "503":
+          description: Service unavailable
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Download User File
+      tags:
+      - Users
+  /users/{id}/profile/upload:
+    post:
+      consumes:
+      - multipart/form-data
+      description: Upload a profile image for a specific user with validation and
+        security checks
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Profile image file (JPEG, PNG, WebP)
+        in: formData
+        name: file
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: File uploaded successfully
+          schema:
+            allOf:
+            - $ref: '#/definitions/main.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/main.UploadResponse'
+              type: object
+        "400":
+          description: Bad request - validation error
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+        "413":
+          description: File too large
+          schema:
+            additionalProperties: true
+            type: object
+        "503":
+          description: Service unavailable
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Upload User Profile Image
+      tags:
+      - Users
+securityDefinitions:
+  ApiKeyAuth:
+    in: header
+    name: X-User-ID
+    type: apiKey
+swagger: "2.0"

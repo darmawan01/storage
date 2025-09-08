@@ -1,4 +1,4 @@
-package storage
+package handler
 
 import (
 	"bytes"
@@ -11,10 +11,14 @@ import (
 	_ "image/gif"
 	_ "image/jpeg"
 	_ "image/png"
+
+	"github.com/darmawan01/storage/category"
+	"github.com/darmawan01/storage/errors"
+	"github.com/darmawan01/storage/interfaces"
 )
 
 // validateFile performs basic file validation
-func (h *Handler) validateFile(req *UploadRequest, config ValidationConfig) error {
+func (h *Handler) validateFile(req *interfaces.UploadRequest, config category.ValidationConfig) error {
 	// Basic validation
 	if err := h.validateBasicFile(req, config); err != nil {
 		return err
@@ -31,17 +35,17 @@ func (h *Handler) validateFile(req *UploadRequest, config ValidationConfig) erro
 }
 
 // validateBasicFile performs basic file validation
-func (h *Handler) validateBasicFile(req *UploadRequest, config ValidationConfig) error {
+func (h *Handler) validateBasicFile(req *interfaces.UploadRequest, config category.ValidationConfig) error {
 	// Check file size
 	if config.MaxFileSize > 0 && req.FileSize > config.MaxFileSize {
-		return &StorageError{
+		return &errors.StorageError{
 			Code:    "FILE_TOO_LARGE",
 			Message: fmt.Sprintf("file size %d exceeds maximum allowed size %d", req.FileSize, config.MaxFileSize),
 		}
 	}
 
 	if config.MinFileSize > 0 && req.FileSize < config.MinFileSize {
-		return &StorageError{
+		return &errors.StorageError{
 			Code:    "FILE_TOO_SMALL",
 			Message: fmt.Sprintf("file size %d is below minimum required size %d", req.FileSize, config.MinFileSize),
 		}
@@ -50,7 +54,7 @@ func (h *Handler) validateBasicFile(req *UploadRequest, config ValidationConfig)
 	// Check content type
 	if len(config.AllowedTypes) > 0 {
 		if !contains(config.AllowedTypes, req.ContentType) {
-			return &StorageError{
+			return &errors.StorageError{
 				Code:    "UNSUPPORTED_TYPE",
 				Message: fmt.Sprintf("content type %s is not allowed, allowed types: %v", req.ContentType, config.AllowedTypes),
 			}
@@ -61,7 +65,7 @@ func (h *Handler) validateBasicFile(req *UploadRequest, config ValidationConfig)
 	if len(config.AllowedExtensions) > 0 {
 		ext := strings.ToLower(filepath.Ext(req.FileName))
 		if !contains(config.AllowedExtensions, ext) {
-			return &StorageError{
+			return &errors.StorageError{
 				Code:    "INVALID_EXTENSION",
 				Message: fmt.Sprintf("file extension %s is not allowed, allowed extensions: %v", ext, config.AllowedExtensions),
 			}
@@ -72,11 +76,11 @@ func (h *Handler) validateBasicFile(req *UploadRequest, config ValidationConfig)
 }
 
 // validateImage performs image-specific validation
-func (h *Handler) validateImage(req *UploadRequest, config ImageValidationConfig) error {
+func (h *Handler) validateImage(req *interfaces.UploadRequest, config category.ImageValidationConfig) error {
 	// Decode image to get properties
 	img, format, err := h.decodeImage(req.FileData)
 	if err != nil {
-		return &StorageError{
+		return &errors.StorageError{
 			Code:    "INVALID_IMAGE",
 			Message: fmt.Sprintf("failed to decode image: %v", err),
 		}
@@ -88,25 +92,25 @@ func (h *Handler) validateImage(req *UploadRequest, config ImageValidationConfig
 	height := bounds.Dy()
 
 	if config.MinWidth > 0 && width < config.MinWidth {
-		return &StorageError{
+		return &errors.StorageError{
 			Code:    "IMAGE_TOO_SMALL",
 			Message: fmt.Sprintf("image width %d is below minimum %d", width, config.MinWidth),
 		}
 	}
 	if config.MaxWidth > 0 && width > config.MaxWidth {
-		return &StorageError{
+		return &errors.StorageError{
 			Code:    "IMAGE_TOO_LARGE",
 			Message: fmt.Sprintf("image width %d exceeds maximum %d", width, config.MaxWidth),
 		}
 	}
 	if config.MinHeight > 0 && height < config.MinHeight {
-		return &StorageError{
+		return &errors.StorageError{
 			Code:    "IMAGE_TOO_SMALL",
 			Message: fmt.Sprintf("image height %d is below minimum %d", height, config.MinHeight),
 		}
 	}
 	if config.MaxHeight > 0 && height > config.MaxHeight {
-		return &StorageError{
+		return &errors.StorageError{
 			Code:    "IMAGE_TOO_LARGE",
 			Message: fmt.Sprintf("image height %d exceeds maximum %d", height, config.MaxHeight),
 		}
@@ -115,13 +119,13 @@ func (h *Handler) validateImage(req *UploadRequest, config ImageValidationConfig
 	// Check aspect ratio
 	aspectRatio := float64(width) / float64(height)
 	if config.MinAspectRatio > 0 && aspectRatio < config.MinAspectRatio {
-		return &StorageError{
+		return &errors.StorageError{
 			Code:    "INVALID_ASPECT_RATIO",
 			Message: fmt.Sprintf("image aspect ratio %.2f is below minimum %.2f", aspectRatio, config.MinAspectRatio),
 		}
 	}
 	if config.MaxAspectRatio > 0 && aspectRatio > config.MaxAspectRatio {
-		return &StorageError{
+		return &errors.StorageError{
 			Code:    "INVALID_ASPECT_RATIO",
 			Message: fmt.Sprintf("image aspect ratio %.2f exceeds maximum %.2f", aspectRatio, config.MaxAspectRatio),
 		}
@@ -130,7 +134,7 @@ func (h *Handler) validateImage(req *UploadRequest, config ImageValidationConfig
 	// Check format
 	if len(config.AllowedFormats) > 0 {
 		if !contains(config.AllowedFormats, format) {
-			return &StorageError{
+			return &errors.StorageError{
 				Code:    "UNSUPPORTED_FORMAT",
 				Message: fmt.Sprintf("image format %s is not allowed, allowed formats: %v", format, config.AllowedFormats),
 			}
@@ -141,20 +145,20 @@ func (h *Handler) validateImage(req *UploadRequest, config ImageValidationConfig
 	if config.MinQuality > 0 || config.MaxQuality > 0 {
 		quality, err := h.getImageQuality(req.FileData, format)
 		if err != nil {
-			return &StorageError{
+			return &errors.StorageError{
 				Code:    "QUALITY_CHECK_FAILED",
 				Message: fmt.Sprintf("failed to get image quality: %v", err),
 			}
 		}
 
 		if config.MinQuality > 0 && quality < config.MinQuality {
-			return &StorageError{
+			return &errors.StorageError{
 				Code:    "QUALITY_TOO_LOW",
 				Message: fmt.Sprintf("image quality %d is below minimum %d", quality, config.MinQuality),
 			}
 		}
 		if config.MaxQuality > 0 && quality > config.MaxQuality {
-			return &StorageError{
+			return &errors.StorageError{
 				Code:    "QUALITY_TOO_HIGH",
 				Message: fmt.Sprintf("image quality %d exceeds maximum %d", quality, config.MaxQuality),
 			}
@@ -165,7 +169,7 @@ func (h *Handler) validateImage(req *UploadRequest, config ImageValidationConfig
 	if len(config.AllowedColorSpaces) > 0 {
 		colorSpace := h.getImageColorSpace(img)
 		if !contains(config.AllowedColorSpaces, colorSpace) {
-			return &StorageError{
+			return &errors.StorageError{
 				Code:    "UNSUPPORTED_COLOR_SPACE",
 				Message: fmt.Sprintf("image color space %s is not allowed, allowed color spaces: %v", colorSpace, config.AllowedColorSpaces),
 			}

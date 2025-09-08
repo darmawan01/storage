@@ -1,6 +1,6 @@
-# MinIO Storage API
+# Cat & Dog Photo Storage API
 
-A clean, production-ready MinIO storage API with comprehensive validation, security, and preview capabilities.
+A simple and clean MinIO storage API with automatic thumbnail generation, metadata callbacks, and direct/presigned downloads. Perfect for photo storage with clear cat and dog examples.
 
 ## 🚀 Quick Start
 
@@ -14,20 +14,24 @@ docker-compose up -d
 ### 2. Start API Server
 
 ```bash
-# Run the Gin server
-go run examples/gin_server.go
+# Run the API server
+go run examples/main.go
 ```
 
 ### 3. Test the API
-
-Open `examples/test.html` in your browser or use curl:
 
 ```bash
 # Check health
 curl http://localhost:8080/api/v1/health
 
-# Upload profile image
-curl -X POST -F 'file=@image.jpg' http://localhost:8080/api/v1/users/123/profile/upload
+# Upload cat photo
+curl -X POST -F 'file=@cat.jpg' http://localhost:8080/api/v1/cats/123/upload
+
+# Upload dog photo
+curl -X POST -F 'file=@dog.jpg' http://localhost:8080/api/v1/dogs/456/upload
+
+# Run the test script
+./test_cat_dog.sh
 ```
 
 ## 📁 Project Structure
@@ -68,26 +72,46 @@ The API is configured for:
 - **Validation**: Comprehensive file validation
 - **Security**: Authentication and authorization ready
 
+### Metadata Callback Support
+
+The library focuses purely on MinIO operations and provides a simple callback mechanism for metadata storage:
+
+```go
+// Define your metadata storage callback
+func (s *MyMetadataStorage) StoreFileMetadata(ctx context.Context, metadata *interfaces.FileMetadata) error {
+    // Store metadata in your preferred system (database, Redis, etc.)
+    return s.database.Save(metadata)
+}
+
+// Use in handler configuration
+handlerConfig := &handler.HandlerConfig{
+    BasePath: "user",
+    Categories: map[string]category.CategoryConfig{...},
+    MetadataCallback: myMetadataStorage.StoreFileMetadata,
+}
+```
+
+**Note**: The library does not provide built-in metadata storage. Users must implement their own metadata storage system (database, Redis, etc.) and use the callback to store file metadata after successful uploads.
+
 ## 📋 API Endpoints
 
 ### Health & Test
 - `GET /api/v1/health` - Health check
 - `GET /api/v1/test/upload` - Upload instructions
 - `GET /api/v1/test/validation` - Validation rules
+- `GET /api/v1/test/metadata` - Show stored file metadata
 
-### User File Operations
-- `POST /api/v1/users/{id}/profile/upload` - Upload profile image
-- `POST /api/v1/users/{id}/documents/upload` - Upload document
-- `GET /api/v1/users/{id}/files/{category}/{fileId}` - Download file
-- `DELETE /api/v1/users/{id}/files/{category}/{fileId}` - Delete file
-- `GET /api/v1/users/{id}/files` - List files
+### Cat Photo Operations
+- `POST /api/v1/cats/{id}/upload` - Upload cat photo
+- `GET /api/v1/cats/{id}/files/{fileId}` - Download cat file
+- `DELETE /api/v1/cats/{id}/files/{fileId}` - Delete cat file
+- `GET /api/v1/cats/{id}/files` - List cat files
 
-### Courier File Operations
-- `POST /api/v1/couriers/{id}/vehicle/upload` - Upload vehicle image
-- `POST /api/v1/couriers/{id}/document/upload` - Upload document
-- `GET /api/v1/couriers/{id}/files/{fileId}` - Download file
-- `DELETE /api/v1/couriers/{id}/files/{fileId}` - Delete file
-- `GET /api/v1/couriers/{id}/files` - List files
+### Dog Photo Operations
+- `POST /api/v1/dogs/{id}/upload` - Upload dog photo
+- `GET /api/v1/dogs/{id}/files/{fileId}` - Download dog file
+- `DELETE /api/v1/dogs/{id}/files/{fileId}` - Delete dog file
+- `GET /api/v1/dogs/{id}/files` - List dog files
 
 ### File Preview Operations
 - `GET /api/v1/files/{fileId}/preview` - Preview file

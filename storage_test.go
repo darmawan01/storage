@@ -4,6 +4,14 @@ import (
 	"bytes"
 	"fmt"
 	"log"
+
+	"github.com/darmawan01/storage/category"
+	"github.com/darmawan01/storage/config"
+	"github.com/darmawan01/storage/errors"
+	"github.com/darmawan01/storage/handler"
+	"github.com/darmawan01/storage/interfaces"
+	"github.com/darmawan01/storage/middleware"
+	"github.com/darmawan01/storage/registry"
 )
 
 func StorageTest() {
@@ -11,7 +19,7 @@ func StorageTest() {
 	fmt.Println("Testing MinIO Storage Architecture...")
 
 	// Create a test configuration
-	config := StorageConfig{
+	cfg := config.StorageConfig{
 		Endpoint:        "localhost:9000",
 		AccessKey:       "minioadmin",
 		SecretKey:       "minioadmin",
@@ -24,10 +32,10 @@ func StorageTest() {
 	}
 
 	// Initialize storage registry
-	_ = NewRegistry()
+	_ = registry.NewRegistry()
 
 	// Test configuration validation
-	if err := config.Validate(); err != nil {
+	if err := cfg.Validate(); err != nil {
 		log.Printf("Configuration validation failed: %v", err)
 		return
 	}
@@ -35,32 +43,32 @@ func StorageTest() {
 	fmt.Println("✓ Configuration validation passed")
 
 	// Test handler configuration
-	handlerConfig := &HandlerConfig{
+	handlerConfig := &handler.HandlerConfig{
 		BasePath: "test",
 
-		Categories: map[string]CategoryConfig{
+		Categories: map[string]category.CategoryConfig{
 			"profile": {
 				BucketSuffix: "images",
 				IsPublic:     false,
 				MaxSize:      5 * 1024 * 1024,
 				AllowedTypes: []string{"image/jpeg", "image/png"},
-				Validation: ValidationConfig{
+				Validation: category.ValidationConfig{
 					MaxFileSize:       5 * 1024 * 1024,
 					MinFileSize:       1024,
 					AllowedTypes:      []string{"image/jpeg", "image/png"},
 					AllowedExtensions: []string{".jpg", ".jpeg", ".png"},
-					ImageValidation: &ImageValidationConfig{
+					ImageValidation: &category.ImageValidationConfig{
 						MinWidth:  100,
 						MaxWidth:  2048,
 						MinHeight: 100,
 						MaxHeight: 2048,
 					},
 				},
-				Security: SecurityConfig{
+				Security: middleware.SecurityConfig{
 					RequireAuth:  true,
 					RequireOwner: true,
 				},
-				Preview: PreviewConfig{
+				Preview: category.PreviewConfig{
 					GenerateThumbnails: true,
 					ThumbnailSizes:     []string{"150x150", "300x300"},
 					EnablePreview:      true,
@@ -87,9 +95,9 @@ func StorageTest() {
 		fmt.Println("✓ Video type detection works")
 	}
 
-	// Test file category detection
-	category := GetFileCategory(testContentType)
-	if category == CategoryProfile {
+	// Test file ctgry detection
+	ctgry := GetFileCategory(testContentType)
+	if ctgry == interfaces.CategoryProfile {
 		fmt.Println("✓ File category detection works")
 	}
 
@@ -119,21 +127,21 @@ func StorageTest() {
 	}
 
 	// Test error types
-	testError := ErrFileNotFound
+	testError := errors.ErrFileNotFound
 	fmt.Printf("✓ Error types: %s\n", testError.Error())
 
 	// Test default configurations
-	defaultStorageConfig := DefaultStorageConfig()
+	defaultStorageConfig := config.DefaultStorageConfig()
 	fmt.Printf("✓ Default storage config: %s\n", defaultStorageConfig.Endpoint)
 
-	defaultHandlerConfig := DefaultHandlerConfig("test")
+	defaultHandlerConfig := handler.DefaultHandlerConfig("test")
 	fmt.Printf("✓ Default handler config: %s\n", defaultHandlerConfig.BasePath)
 
-	defaultCategoryConfig := DefaultCategoryConfig("images", false, 5*1024*1024)
+	defaultCategoryConfig := category.DefaultCategoryConfig("images", false, 5*1024*1024)
 	fmt.Printf("✓ Default category config: %s\n", defaultCategoryConfig.BucketSuffix)
 
 	// Test storage request/response structures
-	uploadReq := &UploadRequest{
+	uploadReq := &interfaces.UploadRequest{
 		FileData:    bytes.NewReader([]byte("test data")),
 		FileSize:    9,
 		ContentType: "text/plain",
@@ -149,7 +157,7 @@ func StorageTest() {
 
 	fmt.Printf("✓ Upload request created: %s\n", uploadReq.FileName)
 
-	downloadReq := &DownloadRequest{
+	downloadReq := &interfaces.DownloadRequest{
 		FileKey: "test/user/123/profile/test.txt",
 		UserID:  "user-123",
 	}
@@ -157,13 +165,13 @@ func StorageTest() {
 	fmt.Printf("✓ Download request created: %s\n", downloadReq.FileKey)
 
 	// Test file metadata
-	fileMetadata := &FileMetadata{
+	fileMetadata := &interfaces.FileMetadata{
 		ID:          "file-123",
 		FileName:    "test.txt",
 		FileKey:     "test/user/123/profile/test.txt",
 		FileSize:    9,
 		ContentType: "text/plain",
-		Category:    CategoryProfile,
+		Category:    interfaces.CategoryProfile,
 		Namespace:   "test",
 		EntityType:  "user",
 		EntityID:    "123",
@@ -176,7 +184,7 @@ func StorageTest() {
 	fmt.Printf("✓ File metadata created: %s\n", fileMetadata.FileName)
 
 	// Test thumbnail info
-	thumbnailInfo := ThumbnailInfo{
+	thumbnailInfo := interfaces.ThumbnailInfo{
 		Size:     "150x150",
 		URL:      "/thumbnails/150x150/test.jpg",
 		Width:    150,

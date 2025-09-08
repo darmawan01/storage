@@ -6,13 +6,18 @@ import (
 	"strings"
 	"time"
 
+	"github.com/darmawan01/storage/config"
+	"github.com/darmawan01/storage/handler"
+	"github.com/darmawan01/storage/interfaces"
+	"github.com/darmawan01/storage/registry"
+	"github.com/google/uuid"
 	"github.com/minio/minio-go/v7"
 )
 
 // New creates a new storage client with the given configuration
-func New(config *StorageConfig) (*Registry, error) {
+func New(config *config.StorageConfig) (*registry.Registry, error) {
 	// Create registry
-	registry := NewRegistry()
+	registry := registry.NewRegistry()
 
 	// Initialize with configuration
 	if err := registry.Initialize(*config); err != nil {
@@ -24,9 +29,9 @@ func New(config *StorageConfig) (*Registry, error) {
 }
 
 // NewWithHandlers creates a new storage client with pre-configured handlers
-func NewWithHandlers(config StorageConfig, handlers map[string]*HandlerConfig) (*Registry, error) {
+func NewWithHandlers(config config.StorageConfig, handlers map[string]*handler.HandlerConfig) (*registry.Registry, error) {
 	// Create registry
-	registry := NewRegistry()
+	registry := registry.NewRegistry()
 
 	// Initialize with configuration
 	if err := registry.Initialize(config); err != nil {
@@ -45,19 +50,19 @@ func NewWithHandlers(config StorageConfig, handlers map[string]*HandlerConfig) (
 }
 
 // NewHandler creates a new storage handler for a specific service
-func NewHandler(name string, config *HandlerConfig, client interface{}) (*Handler, error) {
+func NewHandler(name string, config *handler.HandlerConfig, client interface{}) (*handler.Handler, error) {
 	if err := config.Validate(); err != nil {
 		return nil, err
 	}
 
-	handler := &Handler{
-		name:   name,
-		config: config,
-		client: client.(*minio.Client),
+	handler := &handler.Handler{
+		Name:   name,
+		Config: config,
+		Client: client.(*minio.Client),
 	}
 
 	// Initialize handler
-	if err := handler.initialize(); err != nil {
+	if err := handler.Initialize(); err != nil {
 		return nil, fmt.Errorf("failed to initialize handler: %w", err)
 	}
 
@@ -125,17 +130,17 @@ func IsDocumentType(contentType string) bool {
 }
 
 // GetFileCategory determines the file category based on content type
-func GetFileCategory(contentType string) FileCategory {
+func GetFileCategory(contentType string) interfaces.FileCategory {
 	if IsImageType(contentType) {
-		return CategoryProfile
+		return interfaces.CategoryProfile
 	}
 	if IsDocumentType(contentType) {
-		return CategoryDocument
+		return interfaces.CategoryDocument
 	}
 	if IsVideoType(contentType) || IsAudioType(contentType) {
-		return CategoryAttachment
+		return interfaces.CategoryAttachment
 	}
-	return CategoryAttachment // Default category
+	return interfaces.CategoryAttachment // Default category
 }
 
 // FormatFileSize formats a file size in bytes to human readable format
@@ -176,10 +181,10 @@ func ValidateThumbnailSize(size string) error {
 // GenerateFileKey generates a structured file key
 func GenerateFileKey(basePath, entityType, entityID, category, filename string) string {
 	timestamp := time.Now().Unix()
-	uuid := generateUUID()
+
 	ext := filepath.Ext(filename)
 	return fmt.Sprintf("%s/%s/%s/%s/%d_%s%s",
-		basePath, entityType, entityID, category, timestamp, uuid, ext)
+		basePath, entityType, entityID, category, timestamp, uuid.New().String(), ext)
 }
 
 // ExtractFileInfo extracts file information from a file key

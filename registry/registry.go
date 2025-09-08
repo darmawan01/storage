@@ -1,4 +1,4 @@
-package storage
+package registry
 
 import (
 	"context"
@@ -6,6 +6,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/darmawan01/storage/config"
+	"github.com/darmawan01/storage/errors"
+	"github.com/darmawan01/storage/handler"
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
 )
@@ -13,20 +16,20 @@ import (
 // Registry manages multiple storage handlers with shared MinIO connection
 type Registry struct {
 	client   *minio.Client
-	config   StorageConfig
-	handlers map[string]*Handler
+	config   config.StorageConfig
+	handlers map[string]*handler.Handler
 	mutex    sync.RWMutex
 }
 
 // NewRegistry creates a new storage registry
 func NewRegistry() *Registry {
 	return &Registry{
-		handlers: make(map[string]*Handler),
+		handlers: make(map[string]*handler.Handler),
 	}
 }
 
 // Initialize sets up the MinIO client and validates configuration
-func (r *Registry) Initialize(config StorageConfig) error {
+func (r *Registry) Initialize(config config.StorageConfig) error {
 	if err := config.Validate(); err != nil {
 		return err
 	}
@@ -57,7 +60,7 @@ func (r *Registry) Initialize(config StorageConfig) error {
 }
 
 // Register creates a new storage handler with the given configuration
-func (r *Registry) Register(name string, config *HandlerConfig) (*Handler, error) {
+func (r *Registry) Register(name string, config *handler.HandlerConfig) (*handler.Handler, error) {
 	if err := config.Validate(); err != nil {
 		return nil, err
 	}
@@ -67,18 +70,18 @@ func (r *Registry) Register(name string, config *HandlerConfig) (*Handler, error
 
 	// Check if handler already exists
 	if _, exists := r.handlers[name]; exists {
-		return nil, &StorageError{Code: "HANDLER_EXISTS", Message: "Handler " + name + " already exists"}
+		return nil, &errors.StorageError{Code: "HANDLER_EXISTS", Message: "Handler " + name + " already exists"}
 	}
 
-	handler := &Handler{
-		name:     name,
-		config:   config,
-		client:   r.client,
-		registry: r,
+	handler := &handler.Handler{
+		Name:   name,
+		Config: config,
+		Client: r.client,
+		Region: r.config.Region,
 	}
 
 	// Initialize handler
-	if err := handler.initialize(); err != nil {
+	if err := handler.Initialize(); err != nil {
 		return nil, fmt.Errorf("failed to initialize handler %s: %w", name, err)
 	}
 
@@ -87,13 +90,13 @@ func (r *Registry) Register(name string, config *HandlerConfig) (*Handler, error
 }
 
 // GetHandler retrieves a registered handler by name
-func (r *Registry) GetHandler(name string) (*Handler, error) {
+func (r *Registry) GetHandler(name string) (*handler.Handler, error) {
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()
 
 	handler, exists := r.handlers[name]
 	if !exists {
-		return nil, &StorageError{Code: "HANDLER_NOT_FOUND", Message: "Handler " + name + " not found"}
+		return nil, &errors.StorageError{Code: "HANDLER_NOT_FOUND", Message: "Handler " + name + " not found"}
 	}
 
 	return handler, nil
@@ -112,7 +115,7 @@ func (r *Registry) ListHandlers() []string {
 }
 
 // GetConfig returns the storage configuration
-func (r *Registry) GetConfig() StorageConfig {
+func (r *Registry) GetConfig() config.StorageConfig {
 	return r.config
 }
 
@@ -130,12 +133,12 @@ func (r *Registry) Close() error {
 	for _, handler := range r.handlers {
 		if err := handler.Close(); err != nil {
 			// Log error but continue closing other handlers
-			fmt.Printf("Error closing handler %s: %v\n", handler.name, err)
+			fmt.Printf("Error closing handler %s: %v\n", handler.Name, err)
 		}
 	}
 
 	// Clear handlers map
-	r.handlers = make(map[string]*Handler)
+	r.handlers = make(map[string]*handler.Handler)
 
 	return nil
 }
@@ -143,7 +146,7 @@ func (r *Registry) Close() error {
 // HealthCheck performs a health check on the storage system
 func (r *Registry) HealthCheck(ctx context.Context) error {
 	if r.client == nil {
-		return &StorageError{Code: "NOT_INITIALIZED", Message: "Registry not initialized"}
+		return &errors.StorageError{Code: "NOT_INITIALIZED", Message: "Registry not initialized"}
 	}
 
 	// Test MinIO connection
