@@ -1,8 +1,12 @@
 package handler
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"image"
+	"image/jpeg"
+	"io"
 	"net/url"
 	"path/filepath"
 	"strconv"
@@ -299,8 +303,42 @@ func (h *Handler) Thumbnail(ctx context.Context, req *interfaces.ThumbnailReques
 		return nil, &errors.StorageError{Code: "THUMBNAIL_NOT_SUPPORTED", Message: "Thumbnail generation not supported for this file type"}
 	}
 
-	// Generate presigned URL for thumbnail (expires in 1 hour)
-	thumbnailURL, err := h.Client.PresignedGetObject(ctx, bucketName, req.FileKey, time.Hour, nil)
+	// Generate thumbnail key based on original file key and requested size
+	thumbnailKey := h.generateThumbnailKey(req.FileKey, req.Size)
+
+	// Check if thumbnail already exists
+	thumbnailBucket := h.GetBucketName("thumbnail")
+	exists, err := h.thumbnailExists(ctx, thumbnailBucket, thumbnailKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check thumbnail existence: %w", err)
+	}
+
+	// If thumbnail doesn't exist, generate it
+	if !exists {
+		// Get the original file
+		originalObject, err := h.Client.GetObject(ctx, bucketName, req.FileKey, minio.GetObjectOptions{})
+		if err != nil {
+			return nil, fmt.Errorf("failed to get original file: %w", err)
+		}
+		defer originalObject.Close()
+
+		// Generate thumbnail
+		thumbnailData, err := h.generateThumbnailFromObject(originalObject, req.Size, objInfo.ContentType)
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate thumbnail: %w", err)
+		}
+
+		// Upload thumbnail to storage
+		_, err = h.Client.PutObject(ctx, thumbnailBucket, thumbnailKey, bytes.NewReader(thumbnailData), int64(len(thumbnailData)), minio.PutObjectOptions{
+			ContentType: "image/jpeg",
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to upload thumbnail: %w", err)
+		}
+	}
+
+	// Generate presigned URL for thumbnail (expires in 24 hours)
+	thumbnailURL, err := h.Client.PresignedGetObject(ctx, thumbnailBucket, thumbnailKey, 24*time.Hour, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate thumbnail URL: %w", err)
 	}
@@ -313,6 +351,7 @@ func (h *Handler) Thumbnail(ctx context.Context, req *interfaces.ThumbnailReques
 		Metadata: map[string]interface{}{
 			"original_file":  req.FileKey,
 			"thumbnail_size": req.Size,
+			"thumbnail_key":  thumbnailKey,
 		},
 	}, nil
 }
@@ -531,6 +570,116 @@ func (h *Handler) supportsThumbnail(contentType string) bool {
 		}
 	}
 	return false
+}
+
+// generateThumbnailKey generates a key for the thumbnail
+func (h *Handler) generateThumbnailKey(originalKey, size string) string {
+	// Replace the original key with thumbnail prefix and size
+	parts := strings.Split(originalKey, "/")
+	if len(parts) > 0 {
+		parts[0] = "thumbnails"
+		parts = append(parts, size)
+	}
+	return strings.Join(parts, "/")
+}
+
+// thumbnailExists checks if a thumbnail exists
+func (h *Handler) thumbnailExists(ctx context.Context, bucketName, thumbnailKey string) (bool, error) {
+	// Check if the thumbnail exists in MinIO
+	_, err := h.Client.StatObject(ctx, bucketName, thumbnailKey, minio.StatObjectOptions{})
+	if err != nil {
+		// If the object doesn't exist, minio returns a specific error
+		if minio.ToErrorResponse(err).Code == "NoSuchKey" {
+			return false, nil
+		}
+		return false, fmt.Errorf("failed to check thumbnail existence: %w", err)
+	}
+
+	return true, nil
+}
+
+// generateThumbnailFromObject generates a thumbnail from an object
+func (h *Handler) generateThumbnailFromObject(object io.Reader, size, contentType string) ([]byte, error) {
+	// Parse size (e.g., "150x150")
+	parts := strings.Split(size, "x")
+	if len(parts) != 2 {
+		return nil, fmt.Errorf("invalid size format: %s", size)
+	}
+
+	width, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return nil, fmt.Errorf("invalid width: %s", parts[0])
+	}
+
+	height, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return nil, fmt.Errorf("invalid height: %s", parts[1])
+	}
+
+	// Decode the original image
+	img, _, err := image.Decode(object)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode image: %w", err)
+	}
+
+	// Resize the image
+	resizedImg := h.resizeImage(img, width, height)
+
+	// Encode the resized image as JPEG
+	var buf bytes.Buffer
+	err = jpeg.Encode(&buf, resizedImg, &jpeg.Options{Quality: 85})
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode thumbnail: %w", err)
+	}
+
+	return buf.Bytes(), nil
+}
+
+// resizeImage resizes an image to the specified dimensions
+func (h *Handler) resizeImage(img image.Image, width, height int) image.Image {
+	// Get original bounds
+	bounds := img.Bounds()
+	originalWidth := bounds.Dx()
+	originalHeight := bounds.Dy()
+
+	// Calculate scaling factors
+	scaleX := float64(width) / float64(originalWidth)
+	scaleY := float64(height) / float64(originalHeight)
+
+	// Use the smaller scale to maintain aspect ratio
+	scale := scaleX
+	if scaleY < scaleX {
+		scale = scaleY
+	}
+
+	// Calculate new dimensions
+	newWidth := int(float64(originalWidth) * scale)
+	newHeight := int(float64(originalHeight) * scale)
+
+	// Create new image
+	newImg := image.NewRGBA(image.Rect(0, 0, newWidth, newHeight))
+
+	// Simple nearest neighbor resize
+	for y := 0; y < newHeight; y++ {
+		for x := 0; x < newWidth; x++ {
+			// Map to original coordinates
+			origX := int(float64(x) / scale)
+			origY := int(float64(y) / scale)
+
+			// Ensure we don't go out of bounds
+			if origX >= originalWidth {
+				origX = originalWidth - 1
+			}
+			if origY >= originalHeight {
+				origY = originalHeight - 1
+			}
+
+			// Copy pixel
+			newImg.Set(x, y, img.At(origX, origY))
+		}
+	}
+
+	return newImg
 }
 
 func (h *Handler) setBucketPolicy(ctx context.Context, bucketName string, categoryConfig category.CategoryConfig) error {

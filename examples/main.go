@@ -389,6 +389,26 @@ func initStorage() {
 					PreviewFormats:     []string{"image"},
 				},
 			},
+			"thumbnail": {
+				BucketSuffix: "thumbnails",
+				IsPublic:     true,            // Thumbnails are typically public
+				MaxSize:      1 * 1024 * 1024, // 1MB for thumbnails
+				AllowedTypes: []string{"image/jpeg", "image/png"},
+				Validation: category.ValidationConfig{
+					MaxFileSize:  1 * 1024 * 1024,
+					MinFileSize:  1024, // 1KB minimum
+					AllowedTypes: []string{"image/jpeg", "image/png"},
+				},
+				Security: middleware.SecurityConfig{
+					RequireAuth:  false, // Thumbnails are public
+					RequireOwner: false,
+				},
+				Preview: category.PreviewConfig{
+					GenerateThumbnails: false, // Don't generate thumbnails of thumbnails
+					EnablePreview:      true,
+					PreviewFormats:     []string{"image"},
+				},
+			},
 		},
 		// Set the metadata callback
 		MetadataCallback: metadataStorage.StoreFileMetadata,
@@ -432,6 +452,26 @@ func initStorage() {
 				Preview: category.PreviewConfig{
 					GenerateThumbnails: true,
 					ThumbnailSizes:     []string{"150x150", "300x300", "600x600"},
+					EnablePreview:      true,
+					PreviewFormats:     []string{"image"},
+				},
+			},
+			"thumbnail": {
+				BucketSuffix: "thumbnails",
+				IsPublic:     true,            // Thumbnails are typically public
+				MaxSize:      1 * 1024 * 1024, // 1MB for thumbnails
+				AllowedTypes: []string{"image/jpeg", "image/png"},
+				Validation: category.ValidationConfig{
+					MaxFileSize:  1 * 1024 * 1024,
+					MinFileSize:  1024, // 1KB minimum
+					AllowedTypes: []string{"image/jpeg", "image/png"},
+				},
+				Security: middleware.SecurityConfig{
+					RequireAuth:  false, // Thumbnails are public
+					RequireOwner: false,
+				},
+				Preview: category.PreviewConfig{
+					GenerateThumbnails: false, // Don't generate thumbnails of thumbnails
 					EnablePreview:      true,
 					PreviewFormats:     []string{"image"},
 				},
@@ -1105,23 +1145,81 @@ func previewFile(c *gin.Context) {
 }
 
 // @Summary      Get File Thumbnail
-// @Description  Get a thumbnail of a file with specified size (not implemented in demo)
+// @Description  Get a thumbnail of a file with specified size
 // @Tags         Files
 // @Accept       json
 // @Produce      json
 // @Param        fileId path      string  true   "File ID"
 // @Param        size   query     string  false  "Thumbnail size (default: 150x150)"
-// @Success      200    {object}  map[string]interface{}  "Not implemented in demo"
+// @Success      200    {object}  map[string]interface{}  "Thumbnail information"
+// @Failure      404    {object}  map[string]interface{}  "File or thumbnail not found"
+// @Failure      500    {object}  map[string]interface{}  "Internal server error"
 // @Router       /files/{fileId}/thumbnail [get]
 func getThumbnail(c *gin.Context) {
 	fileID := c.Param("fileId")
 	size := c.DefaultQuery("size", "150x150")
 
+	// In demo mode, return a mock response with proper structure
+	if storageRegistry == nil {
+		c.JSON(http.StatusOK, gin.H{
+			"success":       true,
+			"message":       "Thumbnail endpoint (demo mode)",
+			"file_id":       fileID,
+			"size":          size,
+			"thumbnail_url": fmt.Sprintf("/api/v1/files/%s/thumbnail?size=%s", fileID, size),
+			"status":        "demo_mode",
+		})
+		return
+	}
+
+	// Try to get thumbnail from both cat and dog handlers
+	var thumbnailURL string
+
+	// Try cat handler first
+	catHandler, err := storageRegistry.GetHandler("cat")
+	if err == nil && catHandler != nil {
+		req := &interfaces.ThumbnailRequest{
+			FileKey: fileID,
+			Size:    size,
+		}
+		resp, err := catHandler.Thumbnail(c.Request.Context(), req)
+		if err == nil && resp.Success {
+			thumbnailURL = resp.ThumbnailURL
+		}
+	}
+
+	// If not found in cat handler, try dog handler
+	if thumbnailURL == "" {
+		dogHandler, err := storageRegistry.GetHandler("dog")
+		if err == nil && dogHandler != nil {
+			req := &interfaces.ThumbnailRequest{
+				FileKey: fileID,
+				Size:    size,
+			}
+			resp, err := dogHandler.Thumbnail(c.Request.Context(), req)
+			if err == nil && resp.Success {
+				thumbnailURL = resp.ThumbnailURL
+			}
+		}
+	}
+
+	// If still not found, return error
+	if thumbnailURL == "" {
+		c.JSON(http.StatusNotFound, gin.H{
+			"success": false,
+			"error":   "Thumbnail not found",
+			"file_id": fileID,
+			"size":    size,
+		})
+		return
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"message": "Thumbnail endpoint",
-		"file_id": fileID,
-		"size":    size,
-		"status":  "not implemented in demo",
+		"success":       true,
+		"file_id":       fileID,
+		"size":          size,
+		"thumbnail_url": thumbnailURL,
+		"content_type":  "image/jpeg",
 	})
 }
 
