@@ -231,3 +231,58 @@ type User struct {
 	Email    string   `json:"email"`
 	Roles    []string `json:"roles"`
 }
+
+// Batch operation types
+type BatchFile struct {
+	FileData    io.Reader              `json:"-"`
+	FileName    string                 `json:"file_name"`
+	ContentType string                 `json:"content_type"`
+	FileSize    int64                  `json:"file_size"`
+	Category    string                 `json:"category"`
+	Metadata    map[string]interface{} `json:"metadata,omitempty"`
+}
+
+type BatchUploadRequest struct {
+	Files  []BatchFile `json:"files"`
+	UserID string      `json:"user_id"`
+}
+
+type BatchUploadResponse struct {
+	Success      bool              `json:"success"`
+	Results      []*UploadResponse `json:"results"`
+	SuccessCount int               `json:"success_count"`
+	TotalCount   int               `json:"total_count"`
+	Error        error             `json:"error,omitempty"`
+}
+
+type BatchDeleteRequest struct {
+	FileKeys []string `json:"file_keys"`
+	UserID   string   `json:"user_id"`
+}
+
+type BatchDeleteResponse struct {
+	Success      bool              `json:"success"`
+	Results      []*DeleteResponse `json:"results"`
+	SuccessCount int               `json:"success_count"`
+	TotalCount   int               `json:"total_count"`
+	Error        error             `json:"error,omitempty"`
+}
+
+type BatchGetRequest struct {
+	FileKeys []string `json:"file_keys"`
+	UserID   string   `json:"user_id"`
+}
+
+type BatchGetResponse struct {
+	Success      bool                `json:"success"`
+	Results      []*DownloadResponse `json:"results"`
+	SuccessCount int                 `json:"success_count"`
+	TotalCount   int                 `json:"total_count"`
+	Error        error               `json:"error,omitempty"`
+}
+
+// DeleteResponse represents a delete response
+type DeleteResponse struct {
+	Success bool  `json:"success"`
+	Error   error `json:"error,omitempty"`
+}

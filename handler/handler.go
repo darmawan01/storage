@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -331,7 +332,11 @@ func (h *Handler) Stream(ctx context.Context, req *interfaces.StreamRequest) (*i
 	opts := minio.GetObjectOptions{}
 	if req.Range != "" {
 		// Parse range header for partial content requests
-		opts.SetRange(0, 0) // Placeholder - would parse actual range
+		start, end, err := h.parseRangeHeader(req.Range, objInfo.Size)
+		if err != nil {
+			return nil, fmt.Errorf("invalid range header: %w", err)
+		}
+		opts.SetRange(start, end)
 	}
 
 	object, err := h.Client.GetObject(ctx, bucketName, req.FileKey, opts)
@@ -449,16 +454,63 @@ func (h *Handler) UpdateMetadata(ctx context.Context, req *interfaces.UpdateMeta
 // Helper methods
 
 func (h *Handler) findFile(ctx context.Context, fileKey string) (interface{}, string, error) {
-	// Search through all buckets for the file
-	for _, bucketName := range h.Buckets {
+	fmt.Printf("🔍 Handler findFile Debug:\n")
+	fmt.Printf("  Looking for file key: %s\n", fileKey)
+	fmt.Printf("  Available buckets: %v\n", h.Buckets)
+
+	// Try to determine the most likely bucket based on file key pattern
+	if bucketHint := h.getBucketHint(fileKey); bucketHint != "" {
+		fmt.Printf("  🎯 Using bucket hint: %s\n", bucketHint)
+		if object, err := h.Client.StatObject(ctx, bucketHint, fileKey, minio.StatObjectOptions{}); err == nil {
+			fmt.Printf("  ✅ Found file in hinted bucket %s\n", bucketHint)
+			return &object, bucketHint, nil
+		} else {
+			fmt.Printf("  ❌ Not found in hinted bucket %s: %v\n", bucketHint, err)
+		}
+	}
+
+	// Fallback: search through all buckets for the file
+	for category, bucketName := range h.Buckets {
+		fmt.Printf("  Checking bucket %s (category: %s)\n", bucketName, category)
 		object, err := h.Client.StatObject(ctx, bucketName, fileKey, minio.StatObjectOptions{})
 		if err == nil {
+			fmt.Printf("  ✅ Found file in bucket %s\n", bucketName)
 			return &object, bucketName, nil
 		}
+		fmt.Printf("  ❌ Not found in bucket %s: %v\n", bucketName, err)
 		// Continue searching if file not found in this bucket
 	}
 
+	fmt.Printf("  ❌ File not found in any bucket\n")
 	return nil, "", &errors.StorageError{Code: "FILE_NOT_FOUND", Message: "File not found"}
+}
+
+// getBucketHint determines the most likely bucket based on file key pattern
+func (h *Handler) getBucketHint(fileKey string) string {
+	// File key format: {basePath}/{entityType}/{entityID}/{category}/{filename}
+	// Example: "dog/dog/123/photo/1757314047_abc123.jpg"
+
+	parts := strings.Split(fileKey, "/")
+	if len(parts) < 4 {
+		return ""
+	}
+
+	basePath := parts[0]
+	category := parts[3]
+
+	// Check if this matches our handler's base path
+	if basePath != h.Config.BasePath {
+		return ""
+	}
+
+	// Look for a bucket that matches this category
+	for cat, bucketName := range h.Buckets {
+		if cat == category {
+			return bucketName
+		}
+	}
+
+	return ""
 }
 
 func (h *Handler) isPublicFile(bucketName string) bool {
@@ -595,6 +647,8 @@ func (h *Handler) createMiddleware(name, category string, categoryConfig categor
 			ThumbnailSizes:     previewConfig.ThumbnailSizes,
 			ThumbnailBucket:    h.GetBucketName("thumbnail"),
 			ThumbnailPrefix:    "thumbnails",
+			AsyncProcessing:    true, // Enable async processing by default
+			AsyncConfig:        middleware.DefaultAsyncConfig(),
 		}
 		return middleware.NewThumbnailMiddleware(thumbnailConfig, h.Client), nil
 
@@ -637,7 +691,275 @@ func (h *Handler) createMiddleware(name, category string, categoryConfig categor
 		}
 		return middleware.NewCDNMiddleware(cdnConfig), nil
 
+	case "memory":
+		memoryConfig := middleware.DefaultMemoryConfig()
+		// Override with category-specific settings if available
+		if categoryConfig.MaxSize > 0 {
+			memoryConfig.MaxFileSize = categoryConfig.MaxSize
+		}
+		return middleware.NewMemoryMiddleware(memoryConfig), nil
+
+	case "cache":
+		cacheConfig := middleware.DefaultCacheConfig()
+		return middleware.NewCacheMiddleware(cacheConfig), nil
+
+	case "monitoring":
+		monitoringConfig := middleware.DefaultMonitoringConfig()
+		return middleware.NewMonitoringMiddleware(monitoringConfig), nil
+
 	default:
 		return nil, fmt.Errorf("unknown middleware: %s", name)
 	}
+}
+
+// BatchUpload uploads multiple files in a single operation
+func (h *Handler) BatchUpload(ctx context.Context, req *interfaces.BatchUploadRequest) (*interfaces.BatchUploadResponse, error) {
+	if len(req.Files) == 0 {
+		return &interfaces.BatchUploadResponse{
+			Success: false,
+			Error:   &errors.StorageError{Code: "INVALID_REQUEST", Message: "No files provided"},
+		}, nil
+	}
+
+	// Limit batch size to prevent memory issues
+	maxBatchSize := 10
+	if len(req.Files) > maxBatchSize {
+		return &interfaces.BatchUploadResponse{
+			Success: false,
+			Error:   &errors.StorageError{Code: "BATCH_SIZE_EXCEEDED", Message: fmt.Sprintf("Batch size %d exceeds maximum %d", len(req.Files), maxBatchSize)},
+		}, nil
+	}
+
+	results := make([]*interfaces.UploadResponse, len(req.Files))
+	successCount := 0
+
+	// Process files concurrently
+	type result struct {
+		index int
+		resp  *interfaces.UploadResponse
+		err   error
+	}
+
+	resultChan := make(chan result, len(req.Files))
+
+	for i, file := range req.Files {
+		go func(index int, file interfaces.BatchFile) {
+			uploadReq := &interfaces.UploadRequest{
+				FileData:    file.FileData,
+				FileSize:    file.FileSize,
+				ContentType: file.ContentType,
+				FileName:    file.FileName,
+				Category:    file.Category,
+				UserID:      req.UserID,
+				Metadata:    file.Metadata,
+			}
+
+			resp, err := h.Upload(ctx, uploadReq)
+			// resp is already an UploadResponse, no conversion needed
+			resultChan <- result{index: index, resp: resp, err: err}
+		}(i, file)
+	}
+
+	// Collect results
+	for i := 0; i < len(req.Files); i++ {
+		res := <-resultChan
+		results[res.index] = res.resp
+		if res.resp != nil && res.resp.Success {
+			successCount++
+		}
+	}
+
+	return &interfaces.BatchUploadResponse{
+		Success:      successCount > 0,
+		Results:      results,
+		SuccessCount: successCount,
+		TotalCount:   len(req.Files),
+	}, nil
+}
+
+// BatchDelete deletes multiple files in a single operation
+func (h *Handler) BatchDelete(ctx context.Context, req *interfaces.BatchDeleteRequest) (*interfaces.BatchDeleteResponse, error) {
+	if len(req.FileKeys) == 0 {
+		return &interfaces.BatchDeleteResponse{
+			Success: false,
+			Error:   &errors.StorageError{Code: "INVALID_REQUEST", Message: "No file keys provided"},
+		}, nil
+	}
+
+	// Limit batch size to prevent memory issues
+	maxBatchSize := 50
+	if len(req.FileKeys) > maxBatchSize {
+		return &interfaces.BatchDeleteResponse{
+			Success: false,
+			Error:   &errors.StorageError{Code: "BATCH_SIZE_EXCEEDED", Message: fmt.Sprintf("Batch size %d exceeds maximum %d", len(req.FileKeys), maxBatchSize)},
+		}, nil
+	}
+
+	results := make([]*interfaces.DeleteResponse, len(req.FileKeys))
+	successCount := 0
+
+	// Process deletions concurrently
+	type result struct {
+		index int
+		resp  *interfaces.DeleteResponse
+		err   error
+	}
+
+	resultChan := make(chan result, len(req.FileKeys))
+
+	for i, fileKey := range req.FileKeys {
+		go func(index int, fileKey string) {
+			deleteReq := &interfaces.DeleteRequest{
+				FileKey: fileKey,
+				UserID:  req.UserID,
+			}
+
+			err := h.Delete(ctx, deleteReq)
+			// Convert error to DeleteResponse
+			deleteResp := &interfaces.DeleteResponse{
+				Success: err == nil,
+				Error:   err,
+			}
+			resultChan <- result{index: index, resp: deleteResp, err: err}
+		}(i, fileKey)
+	}
+
+	// Collect results
+	for i := 0; i < len(req.FileKeys); i++ {
+		res := <-resultChan
+		results[res.index] = res.resp
+		if res.resp != nil && res.resp.Success {
+			successCount++
+		}
+	}
+
+	return &interfaces.BatchDeleteResponse{
+		Success:      successCount > 0,
+		Results:      results,
+		SuccessCount: successCount,
+		TotalCount:   len(req.FileKeys),
+	}, nil
+}
+
+// BatchGet retrieves multiple files in a single operation
+func (h *Handler) BatchGet(ctx context.Context, req *interfaces.BatchGetRequest) (*interfaces.BatchGetResponse, error) {
+	if len(req.FileKeys) == 0 {
+		return &interfaces.BatchGetResponse{
+			Success: false,
+			Error:   &errors.StorageError{Code: "INVALID_REQUEST", Message: "No file keys provided"},
+		}, nil
+	}
+
+	// Limit batch size to prevent memory issues
+	maxBatchSize := 20
+	if len(req.FileKeys) > maxBatchSize {
+		return &interfaces.BatchGetResponse{
+			Success: false,
+			Error:   &errors.StorageError{Code: "BATCH_SIZE_EXCEEDED", Message: fmt.Sprintf("Batch size %d exceeds maximum %d", len(req.FileKeys), maxBatchSize)},
+		}, nil
+	}
+
+	results := make([]*interfaces.DownloadResponse, len(req.FileKeys))
+	successCount := 0
+
+	// Process downloads concurrently
+	type result struct {
+		index int
+		resp  *interfaces.DownloadResponse
+		err   error
+	}
+
+	resultChan := make(chan result, len(req.FileKeys))
+
+	for i, fileKey := range req.FileKeys {
+		go func(index int, fileKey string) {
+			downloadReq := &interfaces.DownloadRequest{
+				FileKey: fileKey,
+				UserID:  req.UserID,
+			}
+
+			resp, err := h.Download(ctx, downloadReq)
+			// resp is already a DownloadResponse, no conversion needed
+			resultChan <- result{index: index, resp: resp, err: err}
+		}(i, fileKey)
+	}
+
+	// Collect results
+	for i := 0; i < len(req.FileKeys); i++ {
+		res := <-resultChan
+		results[res.index] = res.resp
+		if res.resp != nil && res.resp.Success {
+			successCount++
+		}
+	}
+
+	return &interfaces.BatchGetResponse{
+		Success:      successCount > 0,
+		Results:      results,
+		SuccessCount: successCount,
+		TotalCount:   len(req.FileKeys),
+	}, nil
+}
+
+// parseRangeHeader parses HTTP Range header and returns start and end positions
+func (h *Handler) parseRangeHeader(rangeHeader string, fileSize int64) (int64, int64, error) {
+	// Remove "bytes=" prefix if present
+	rangeStr := strings.TrimPrefix(rangeHeader, "bytes=")
+
+	// Handle different range formats
+	if strings.Contains(rangeStr, ",") {
+		// Multiple ranges not supported, use first one
+		ranges := strings.Split(rangeStr, ",")
+		rangeStr = strings.TrimSpace(ranges[0])
+	}
+
+	// Parse range
+	parts := strings.Split(rangeStr, "-")
+	if len(parts) != 2 {
+		return 0, 0, fmt.Errorf("invalid range format: %s", rangeHeader)
+	}
+
+	var start, end int64
+	var err error
+
+	// Parse start position
+	if parts[0] != "" {
+		start, err = strconv.ParseInt(parts[0], 10, 64)
+		if err != nil {
+			return 0, 0, fmt.Errorf("invalid start position: %s", parts[0])
+		}
+	} else {
+		// Suffix range: -500 means last 500 bytes
+		suffix, err := strconv.ParseInt(parts[1], 10, 64)
+		if err != nil {
+			return 0, 0, fmt.Errorf("invalid suffix range: %s", parts[1])
+		}
+		start = fileSize - suffix
+		if start < 0 {
+			start = 0
+		}
+	}
+
+	// Parse end position
+	if parts[1] != "" {
+		end, err = strconv.ParseInt(parts[1], 10, 64)
+		if err != nil {
+			return 0, 0, fmt.Errorf("invalid end position: %s", parts[1])
+		}
+	} else {
+		// Prefix range: 0- means from start to end
+		end = fileSize - 1
+	}
+
+	// Validate range
+	if start < 0 || end < 0 || start > end || start >= fileSize {
+		return 0, 0, fmt.Errorf("invalid range: start=%d, end=%d, fileSize=%d", start, end, fileSize)
+	}
+
+	// Ensure end doesn't exceed file size
+	if end >= fileSize {
+		end = fileSize - 1
+	}
+
+	return start, end, nil
 }

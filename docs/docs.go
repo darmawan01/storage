@@ -24,9 +24,115 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
-        "/couriers/{id}/document/upload": {
+        "/cats/{id}/batch/delete": {
             "post": {
-                "description": "Upload a document for a specific courier (not implemented in demo)",
+                "description": "Delete multiple cat files in a single request",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "cats"
+                ],
+                "summary": "Batch cat file delete",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Cat ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Batch delete request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/main.BatchDeleteRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/main.BatchDeleteResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/main.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/main.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/cats/{id}/batch/download": {
+            "post": {
+                "description": "Download multiple cat files in a single request",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "cats"
+                ],
+                "summary": "Batch cat file download",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Cat ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Batch download request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/main.BatchDownloadRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/main.BatchDownloadResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/main.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/main.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/cats/{id}/batch/upload": {
+            "post": {
+                "description": "Upload multiple cat files in a single request",
                 "consumes": [
                     "multipart/form-data"
                 ],
@@ -34,39 +140,62 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "Couriers"
+                    "cats"
                 ],
-                "summary": "Upload Courier Document",
+                "summary": "Batch cat file upload",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Courier ID",
+                        "description": "Cat ID",
                         "name": "id",
                         "in": "path",
                         "required": true
                     },
                     {
                         "type": "file",
-                        "description": "Document file",
-                        "name": "file",
+                        "description": "Files to upload",
+                        "name": "files",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "User ID",
+                        "name": "user_id",
                         "in": "formData",
                         "required": true
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "Not implemented in demo",
+                        "description": "OK",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/main.BatchUploadResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/main.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/main.ErrorResponse"
                         }
                     }
                 }
             }
         },
-        "/couriers/{id}/files": {
+        "/cats/{id}/files": {
             "get": {
-                "description": "List all files belonging to a specific courier (not implemented in demo)",
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "List all files belonging to a specific cat",
                 "consumes": [
                     "application/json"
                 ],
@@ -74,21 +203,72 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "Couriers"
+                    "Cats"
                 ],
-                "summary": "List Courier Files",
+                "summary": "List Cat Files",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Courier ID",
+                        "description": "Cat ID",
                         "name": "id",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Maximum number of files to return (default: 50)",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Number of files to skip (default: 0)",
+                        "name": "offset",
+                        "in": "query"
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "Not implemented in demo",
+                        "description": "List of cat files",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/main.SuccessResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/main.ListFilesResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden - access denied",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "503": {
+                        "description": "Service unavailable",
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
@@ -97,9 +277,14 @@ const docTemplate = `{
                 }
             }
         },
-        "/couriers/{id}/files/{fileId}": {
+        "/cats/{id}/files/{fileId}": {
             "get": {
-                "description": "Download a file belonging to a specific courier (not implemented in demo)",
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Download a file belonging to a specific cat. Accepts either the metadata ID or the file key from upload response.",
                 "consumes": [
                     "application/json"
                 ],
@@ -107,20 +292,20 @@ const docTemplate = `{
                     "application/octet-stream"
                 ],
                 "tags": [
-                    "Couriers"
+                    "Cats"
                 ],
-                "summary": "Get Courier File",
+                "summary": "Download Cat File",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Courier ID",
+                        "description": "Cat ID",
                         "name": "id",
                         "in": "path",
                         "required": true
                     },
                     {
                         "type": "string",
-                        "description": "File ID",
+                        "description": "File identifier - can be either metadata ID (e.g., '9498ac3a-57b3-4a6e-9dad-9ec915ffa1b9') or file key (e.g., 'cat/cat/123/photo/1757314047_50a7135e-6612-48ff-b3a6-16f3f1595cbe.png')",
                         "name": "fileId",
                         "in": "path",
                         "required": true
@@ -128,7 +313,34 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "Not implemented in demo",
+                        "description": "File content",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden - access denied",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "File not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "503": {
+                        "description": "Service unavailable",
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
@@ -137,7 +349,12 @@ const docTemplate = `{
                 }
             },
             "delete": {
-                "description": "Delete a file belonging to a specific courier (not implemented in demo)",
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Delete a file belonging to a specific cat. Accepts either the metadata ID or the file key from upload response.",
                 "consumes": [
                     "application/json"
                 ],
@@ -145,20 +362,20 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "Couriers"
+                    "Cats"
                 ],
-                "summary": "Delete Courier File",
+                "summary": "Delete Cat File",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Courier ID",
+                        "description": "Cat ID",
                         "name": "id",
                         "in": "path",
                         "required": true
                     },
                     {
                         "type": "string",
-                        "description": "File ID",
+                        "description": "File identifier - can be either metadata ID (e.g., '9498ac3a-57b3-4a6e-9dad-9ec915ffa1b9') or file key (e.g., 'cat/cat/123/photo/1757314047_50a7135e-6612-48ff-b3a6-16f3f1595cbe.png')",
                         "name": "fileId",
                         "in": "path",
                         "required": true
@@ -166,7 +383,41 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "Not implemented in demo",
+                        "description": "File deleted successfully",
+                        "schema": {
+                            "$ref": "#/definitions/main.SuccessResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden - access denied",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "File not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "503": {
+                        "description": "Service unavailable",
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
@@ -175,9 +426,221 @@ const docTemplate = `{
                 }
             }
         },
-        "/couriers/{id}/vehicle/upload": {
+        "/cats/{id}/presigned/download": {
             "post": {
-                "description": "Upload a vehicle image for a specific courier (not implemented in demo)",
+                "description": "Generate a presigned URL for direct cat file download from MinIO",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "cats"
+                ],
+                "summary": "Generate presigned download URL for cat",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Cat ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Presigned URL request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/main.PresignedURLRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/main.PresignedURLResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/main.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/main.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/cats/{id}/presigned/upload": {
+            "post": {
+                "description": "Generate a presigned URL for direct cat file upload to MinIO",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "cats"
+                ],
+                "summary": "Generate presigned upload URL for cat",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Cat ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Presigned URL request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/main.PresignedURLRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/main.PresignedURLResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/main.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/main.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/dogs/{id}/batch/delete": {
+            "post": {
+                "description": "Delete multiple dog files in a single request",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "dogs"
+                ],
+                "summary": "Batch dog file delete",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Dog ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Batch delete request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/main.BatchDeleteRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/main.BatchDeleteResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/main.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/main.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/dogs/{id}/batch/download": {
+            "post": {
+                "description": "Download multiple dog files in a single request",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "dogs"
+                ],
+                "summary": "Batch dog file download",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Dog ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Batch download request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/main.BatchDownloadRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/main.BatchDownloadResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/main.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/main.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/dogs/{id}/batch/upload": {
+            "post": {
+                "description": "Upload multiple dog files in a single request",
                 "consumes": [
                     "multipart/form-data"
                 ],
@@ -185,20 +648,427 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "Couriers"
+                    "dogs"
                 ],
-                "summary": "Upload Courier Vehicle Image",
+                "summary": "Batch dog file upload",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Courier ID",
+                        "description": "Dog ID",
                         "name": "id",
                         "in": "path",
                         "required": true
                     },
                     {
                         "type": "file",
-                        "description": "Vehicle image file",
+                        "description": "Files to upload",
+                        "name": "files",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "User ID",
+                        "name": "user_id",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/main.BatchUploadResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/main.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/main.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/dogs/{id}/files": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "List all files belonging to a specific dog",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Dogs"
+                ],
+                "summary": "List Dog Files",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Dog ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Maximum number of files to return (default: 50)",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Number of files to skip (default: 0)",
+                        "name": "offset",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "List of dog files",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/main.SuccessResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/main.ListFilesResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden - access denied",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "503": {
+                        "description": "Service unavailable",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/dogs/{id}/files/{fileId}": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Download a file belonging to a specific dog. Accepts either the metadata ID or the file key from upload response.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/octet-stream"
+                ],
+                "tags": [
+                    "Dogs"
+                ],
+                "summary": "Download Dog File",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Dog ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "File identifier - can be either metadata ID (e.g., '9498ac3a-57b3-4a6e-9dad-9ec915ffa1b9') or file key (e.g., 'dog/dog/456/photo/1757314047_50a7135e-6612-48ff-b3a6-16f3f1595cbe.png')",
+                        "name": "fileId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "File content",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden - access denied",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "File not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "503": {
+                        "description": "Service unavailable",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Delete a file belonging to a specific dog. Accepts either the metadata ID or the file key from upload response.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Dogs"
+                ],
+                "summary": "Delete Dog File",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Dog ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "File identifier - can be either metadata ID (e.g., '9498ac3a-57b3-4a6e-9dad-9ec915ffa1b9') or file key (e.g., 'dog/dog/456/photo/1757314047_50a7135e-6612-48ff-b3a6-16f3f1595cbe.png')",
+                        "name": "fileId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "File deleted successfully",
+                        "schema": {
+                            "$ref": "#/definitions/main.SuccessResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden - access denied",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "File not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "503": {
+                        "description": "Service unavailable",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/dogs/{id}/presigned/download": {
+            "post": {
+                "description": "Generate a presigned URL for direct dog file download from MinIO",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "dogs"
+                ],
+                "summary": "Generate presigned download URL for dog",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Dog ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Presigned URL request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/main.PresignedURLRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/main.PresignedURLResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/main.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/main.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/dogs/{id}/presigned/upload": {
+            "post": {
+                "description": "Generate a presigned URL for direct dog file upload to MinIO",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "dogs"
+                ],
+                "summary": "Generate presigned upload URL for dog",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Dog ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Presigned URL request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/main.PresignedURLRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/main.PresignedURLResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/main.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/main.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/dogs/{id}/upload": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Upload a photo for a specific dog with validation and thumbnail generation",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Dogs"
+                ],
+                "summary": "Upload Dog Photo",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Dog ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "file",
+                        "description": "Dog photo file (JPEG, PNG, WebP)",
                         "name": "file",
                         "in": "formData",
                         "required": true
@@ -206,7 +1076,46 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "Not implemented in demo",
+                        "description": "File uploaded successfully",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/main.SuccessResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/main.UploadResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request - validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "413": {
+                        "description": "File too large",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "503": {
+                        "description": "Service unavailable",
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
@@ -368,519 +1277,47 @@ const docTemplate = `{
                 }
             }
         },
-        "/test/download": {
-            "get": {
-                "description": "Get instructions for testing file download functionality",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Test"
-                ],
-                "summary": "Test Download Endpoint",
-                "responses": {
-                    "200": {
-                        "description": "Download test instructions",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    }
-                }
-            }
-        },
-        "/test/upload": {
-            "get": {
-                "description": "Get instructions for testing file upload functionality",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Test"
-                ],
-                "summary": "Test Upload Endpoint",
-                "responses": {
-                    "200": {
-                        "description": "Upload test instructions",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    }
-                }
-            }
-        },
-        "/test/validation": {
-            "get": {
-                "description": "Get validation rules and requirements for file uploads",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Test"
-                ],
-                "summary": "Test Validation Endpoint",
-                "responses": {
-                    "200": {
-                        "description": "Validation rules and requirements",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    }
-                }
-            }
-        },
-        "/users/{id}/documents/upload": {
+        "/presigned/batch-upload": {
             "post": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "description": "Upload a document for a specific user with metadata validation",
+                "description": "Generate multiple presigned URLs for batch file upload",
                 "consumes": [
-                    "multipart/form-data"
+                    "application/json"
                 ],
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
-                    "Users"
+                    "presigned"
                 ],
-                "summary": "Upload User Document",
+                "summary": "Generate batch presigned upload URLs",
                 "parameters": [
                     {
-                        "type": "string",
-                        "description": "User ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "file",
-                        "description": "Document file (PDF, JPEG, PNG)",
-                        "name": "file",
-                        "in": "formData",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Document title",
-                        "name": "title",
-                        "in": "formData",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Document author",
-                        "name": "author",
-                        "in": "formData",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Document description",
-                        "name": "description",
-                        "in": "formData"
+                        "description": "Batch presigned URL request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/main.BatchPresignedURLRequest"
+                        }
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "Document uploaded successfully",
+                        "description": "OK",
                         "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/main.SuccessResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "$ref": "#/definitions/main.UploadResponse"
-                                        }
-                                    }
-                                }
-                            ]
+                            "$ref": "#/definitions/main.BatchPresignedURLResponse"
                         }
                     },
                     "400": {
-                        "description": "Bad request - validation error",
+                        "description": "Bad Request",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "413": {
-                        "description": "File too large",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "503": {
-                        "description": "Service unavailable",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    }
-                }
-            }
-        },
-        "/users/{id}/files": {
-            "get": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "description": "List all files belonging to a specific user with optional filtering by category",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Users"
-                ],
-                "summary": "List User Files",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "User ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Filter by category (profile, document)",
-                        "name": "category",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "description": "Maximum number of files to return (default: 50)",
-                        "name": "limit",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "description": "Number of files to skip (default: 0)",
-                        "name": "offset",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "List of user files",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/main.SuccessResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "$ref": "#/definitions/main.ListFilesResponse"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden - access denied",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/main.ErrorResponse"
                         }
                     },
                     "500": {
-                        "description": "Internal server error",
+                        "description": "Internal Server Error",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "503": {
-                        "description": "Service unavailable",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    }
-                }
-            }
-        },
-        "/users/{id}/files/{category}/{fileId}": {
-            "get": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "description": "Download a file belonging to a specific user by file ID and category",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/octet-stream"
-                ],
-                "tags": [
-                    "Users"
-                ],
-                "summary": "Download User File",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "User ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "File category (profile, document)",
-                        "name": "category",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "File ID",
-                        "name": "fileId",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "File content",
-                        "schema": {
-                            "type": "file"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden - access denied",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "404": {
-                        "description": "File not found",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "503": {
-                        "description": "Service unavailable",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    }
-                }
-            },
-            "delete": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "description": "Delete a file belonging to a specific user by file ID and category",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Users"
-                ],
-                "summary": "Delete User File",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "User ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "File category (profile, document)",
-                        "name": "category",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "File ID",
-                        "name": "fileId",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "File deleted successfully",
-                        "schema": {
-                            "$ref": "#/definitions/main.SuccessResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden - access denied",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "404": {
-                        "description": "File not found",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "500": {
-                        "description": "Internal server error",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "503": {
-                        "description": "Service unavailable",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    }
-                }
-            }
-        },
-        "/users/{id}/profile/upload": {
-            "post": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "description": "Upload a profile image for a specific user with validation and security checks",
-                "consumes": [
-                    "multipart/form-data"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Users"
-                ],
-                "summary": "Upload User Profile Image",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "User ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "file",
-                        "description": "Profile image file (JPEG, PNG, WebP)",
-                        "name": "file",
-                        "in": "formData",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "File uploaded successfully",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/main.SuccessResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "$ref": "#/definitions/main.UploadResponse"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "400": {
-                        "description": "Bad request - validation error",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "413": {
-                        "description": "File too large",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "503": {
-                        "description": "Service unavailable",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/main.ErrorResponse"
                         }
                     }
                 }
@@ -888,6 +1325,185 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "main.BatchDeleteRequest": {
+            "type": "object",
+            "properties": {
+                "file_keys": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "example": [
+                        "cat/cat/123/photo/image1.jpg",
+                        "cat/cat/123/photo/image2.jpg"
+                    ]
+                },
+                "user_id": {
+                    "type": "string",
+                    "example": "demo-user-123"
+                }
+            }
+        },
+        "main.BatchDeleteResponse": {
+            "type": "object",
+            "properties": {
+                "results": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/main.DeleteResult"
+                    }
+                },
+                "success": {
+                    "type": "boolean",
+                    "example": true
+                },
+                "success_count": {
+                    "type": "integer",
+                    "example": 2
+                },
+                "total_count": {
+                    "type": "integer",
+                    "example": 3
+                }
+            }
+        },
+        "main.BatchDownloadRequest": {
+            "type": "object",
+            "properties": {
+                "file_keys": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "example": [
+                        "cat/cat/123/photo/image1.jpg",
+                        "cat/cat/123/photo/image2.jpg"
+                    ]
+                },
+                "user_id": {
+                    "type": "string",
+                    "example": "demo-user-123"
+                }
+            }
+        },
+        "main.BatchDownloadResponse": {
+            "type": "object",
+            "properties": {
+                "results": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/main.FileInfo"
+                    }
+                },
+                "success": {
+                    "type": "boolean",
+                    "example": true
+                },
+                "success_count": {
+                    "type": "integer",
+                    "example": 2
+                },
+                "total_count": {
+                    "type": "integer",
+                    "example": 3
+                }
+            }
+        },
+        "main.BatchPresignedURLRequest": {
+            "type": "object",
+            "properties": {
+                "files": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/main.PresignedURLRequest"
+                    }
+                },
+                "user_id": {
+                    "type": "string",
+                    "example": "demo-user-123"
+                }
+            }
+        },
+        "main.BatchPresignedURLResponse": {
+            "type": "object",
+            "properties": {
+                "success": {
+                    "type": "boolean",
+                    "example": true
+                },
+                "success_count": {
+                    "type": "integer",
+                    "example": 3
+                },
+                "total_count": {
+                    "type": "integer",
+                    "example": 3
+                },
+                "urls": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/main.PresignedURLResponse"
+                    }
+                }
+            }
+        },
+        "main.BatchUploadResponse": {
+            "type": "object",
+            "properties": {
+                "results": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/main.UploadResponse"
+                    }
+                },
+                "success": {
+                    "type": "boolean",
+                    "example": true
+                },
+                "success_count": {
+                    "type": "integer",
+                    "example": 2
+                },
+                "total_count": {
+                    "type": "integer",
+                    "example": 3
+                }
+            }
+        },
+        "main.DeleteResult": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "type": "string",
+                    "example": "File not found"
+                },
+                "file_key": {
+                    "type": "string",
+                    "example": "cat/cat/123/photo/image1.jpg"
+                },
+                "success": {
+                    "type": "boolean",
+                    "example": true
+                }
+            }
+        },
+        "main.ErrorResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer",
+                    "example": 404
+                },
+                "error": {
+                    "type": "string",
+                    "example": "File not found"
+                },
+                "message": {
+                    "type": "string",
+                    "example": "The requested file could not be found"
+                }
+            }
+        },
         "main.FileInfo": {
             "type": "object",
             "properties": {
@@ -944,6 +1560,63 @@ const docTemplate = `{
                 }
             }
         },
+        "main.PresignedURLRequest": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "description": "\"GET\", \"PUT\", \"DELETE\"",
+                    "type": "string",
+                    "example": "PUT"
+                },
+                "content_type": {
+                    "type": "string",
+                    "example": "image/jpeg"
+                },
+                "expires": {
+                    "description": "1 hour in nanoseconds",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/time.Duration"
+                        }
+                    ],
+                    "example": 3600000000000
+                },
+                "file_key": {
+                    "type": "string",
+                    "example": "cat/cat/123/photo/image.jpg"
+                },
+                "max_size": {
+                    "description": "5MB",
+                    "type": "integer",
+                    "example": 5242880
+                },
+                "user_id": {
+                    "type": "string",
+                    "example": "demo-user-123"
+                }
+            }
+        },
+        "main.PresignedURLResponse": {
+            "type": "object",
+            "properties": {
+                "expires_at": {
+                    "type": "string",
+                    "example": "2023-12-01T11:30:00Z"
+                },
+                "file_key": {
+                    "type": "string",
+                    "example": "cat/cat/123/photo/image.jpg"
+                },
+                "success": {
+                    "type": "boolean",
+                    "example": true
+                },
+                "url": {
+                    "type": "string",
+                    "example": "https://localhost:9000/bucket/file?X-Amz-Algorithm=..."
+                }
+            }
+        },
         "main.SuccessResponse": {
             "type": "object",
             "properties": {
@@ -965,6 +1638,10 @@ const docTemplate = `{
                     "type": "integer",
                     "example": 25600
                 },
+                "height": {
+                    "type": "integer",
+                    "example": 150
+                },
                 "size": {
                     "type": "string",
                     "example": "150x150"
@@ -972,6 +1649,10 @@ const docTemplate = `{
                 "url": {
                     "type": "string",
                     "example": "/api/v1/files/abc123/thumbnail?size=150x150"
+                },
+                "width": {
+                    "type": "integer",
+                    "example": 150
                 }
             }
         },
@@ -1021,6 +1702,34 @@ const docTemplate = `{
                     "example": "2023-12-01T10:30:00Z"
                 }
             }
+        },
+        "time.Duration": {
+            "type": "integer",
+            "format": "int64",
+            "enum": [
+                1,
+                1000,
+                1000000,
+                1000000000,
+                60000000000,
+                3600000000000,
+                1,
+                1000,
+                1000000,
+                1000000000
+            ],
+            "x-enum-varnames": [
+                "Nanosecond",
+                "Microsecond",
+                "Millisecond",
+                "Second",
+                "Minute",
+                "Hour",
+                "Nanosecond",
+                "Microsecond",
+                "Millisecond",
+                "Second"
+            ]
         }
     },
     "securityDefinitions": {
@@ -1042,8 +1751,8 @@ var SwaggerInfo = &swag.Spec{
 	Host:             "localhost:8080",
 	BasePath:         "/api/v1",
 	Schemes:          []string{},
-	Title:            "MinIO Storage API",
-	Description:      "A comprehensive file storage API built with MinIO, supporting user profiles, documents, and courier files with advanced validation, security, and preview features.",
+	Title:            "Cat & Dog Photo Storage API",
+	Description:      "A simple and clean file storage API built with MinIO, supporting cat and dog photo uploads with automatic thumbnail generation, metadata callbacks, and direct/presigned downloads.",
 	InfoInstanceName: "swagger",
 	SwaggerTemplate:  docTemplate,
 	LeftDelim:        "{{",

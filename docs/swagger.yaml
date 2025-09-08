@@ -1,5 +1,129 @@
 basePath: /api/v1
 definitions:
+  main.BatchDeleteRequest:
+    properties:
+      file_keys:
+        example:
+        - cat/cat/123/photo/image1.jpg
+        - cat/cat/123/photo/image2.jpg
+        items:
+          type: string
+        type: array
+      user_id:
+        example: demo-user-123
+        type: string
+    type: object
+  main.BatchDeleteResponse:
+    properties:
+      results:
+        items:
+          $ref: '#/definitions/main.DeleteResult'
+        type: array
+      success:
+        example: true
+        type: boolean
+      success_count:
+        example: 2
+        type: integer
+      total_count:
+        example: 3
+        type: integer
+    type: object
+  main.BatchDownloadRequest:
+    properties:
+      file_keys:
+        example:
+        - cat/cat/123/photo/image1.jpg
+        - cat/cat/123/photo/image2.jpg
+        items:
+          type: string
+        type: array
+      user_id:
+        example: demo-user-123
+        type: string
+    type: object
+  main.BatchDownloadResponse:
+    properties:
+      results:
+        items:
+          $ref: '#/definitions/main.FileInfo'
+        type: array
+      success:
+        example: true
+        type: boolean
+      success_count:
+        example: 2
+        type: integer
+      total_count:
+        example: 3
+        type: integer
+    type: object
+  main.BatchPresignedURLRequest:
+    properties:
+      files:
+        items:
+          $ref: '#/definitions/main.PresignedURLRequest'
+        type: array
+      user_id:
+        example: demo-user-123
+        type: string
+    type: object
+  main.BatchPresignedURLResponse:
+    properties:
+      success:
+        example: true
+        type: boolean
+      success_count:
+        example: 3
+        type: integer
+      total_count:
+        example: 3
+        type: integer
+      urls:
+        items:
+          $ref: '#/definitions/main.PresignedURLResponse'
+        type: array
+    type: object
+  main.BatchUploadResponse:
+    properties:
+      results:
+        items:
+          $ref: '#/definitions/main.UploadResponse'
+        type: array
+      success:
+        example: true
+        type: boolean
+      success_count:
+        example: 2
+        type: integer
+      total_count:
+        example: 3
+        type: integer
+    type: object
+  main.DeleteResult:
+    properties:
+      error:
+        example: File not found
+        type: string
+      file_key:
+        example: cat/cat/123/photo/image1.jpg
+        type: string
+      success:
+        example: true
+        type: boolean
+    type: object
+  main.ErrorResponse:
+    properties:
+      code:
+        example: 404
+        type: integer
+      error:
+        example: File not found
+        type: string
+      message:
+        example: The requested file could not be found
+        type: string
+    type: object
   main.FileInfo:
     properties:
       category:
@@ -40,6 +164,46 @@ definitions:
         example: 25
         type: integer
     type: object
+  main.PresignedURLRequest:
+    properties:
+      action:
+        description: '"GET", "PUT", "DELETE"'
+        example: PUT
+        type: string
+      content_type:
+        example: image/jpeg
+        type: string
+      expires:
+        allOf:
+        - $ref: '#/definitions/time.Duration'
+        description: 1 hour in nanoseconds
+        example: 3600000000000
+      file_key:
+        example: cat/cat/123/photo/image.jpg
+        type: string
+      max_size:
+        description: 5MB
+        example: 5242880
+        type: integer
+      user_id:
+        example: demo-user-123
+        type: string
+    type: object
+  main.PresignedURLResponse:
+    properties:
+      expires_at:
+        example: "2023-12-01T11:30:00Z"
+        type: string
+      file_key:
+        example: cat/cat/123/photo/image.jpg
+        type: string
+      success:
+        example: true
+        type: boolean
+      url:
+        example: https://localhost:9000/bucket/file?X-Amz-Algorithm=...
+        type: string
+    type: object
   main.SuccessResponse:
     properties:
       data: {}
@@ -55,12 +219,18 @@ definitions:
       file_size:
         example: 25600
         type: integer
+      height:
+        example: 150
+        type: integer
       size:
         example: 150x150
         type: string
       url:
         example: /api/v1/files/abc123/thumbnail?size=150x150
         type: string
+      width:
+        example: 150
+        type: integer
     type: object
   main.UploadResponse:
     properties:
@@ -96,6 +266,31 @@ definitions:
         example: "2023-12-01T10:30:00Z"
         type: string
     type: object
+  time.Duration:
+    enum:
+    - 1
+    - 1000
+    - 1000000
+    - 1000000000
+    - 60000000000
+    - 3600000000000
+    - 1
+    - 1000
+    - 1000000
+    - 1000000000
+    format: int64
+    type: integer
+    x-enum-varnames:
+    - Nanosecond
+    - Microsecond
+    - Millisecond
+    - Second
+    - Minute
+    - Hour
+    - Nanosecond
+    - Microsecond
+    - Millisecond
+    - Second
 externalDocs:
   description: OpenAPI
   url: https://swagger.io/resources/open-api/
@@ -105,79 +300,195 @@ info:
     email: support@swagger.io
     name: API Support
     url: http://www.swagger.io/support
-  description: A comprehensive file storage API built with MinIO, supporting user
-    profiles, documents, and courier files with advanced validation, security, and
-    preview features.
+  description: A simple and clean file storage API built with MinIO, supporting cat
+    and dog photo uploads with automatic thumbnail generation, metadata callbacks,
+    and direct/presigned downloads.
   license:
     name: MIT
     url: https://opensource.org/licenses/MIT
   termsOfService: http://swagger.io/terms/
-  title: MinIO Storage API
+  title: Cat & Dog Photo Storage API
   version: "1.0"
 paths:
-  /couriers/{id}/document/upload:
+  /cats/{id}/batch/delete:
+    post:
+      consumes:
+      - application/json
+      description: Delete multiple cat files in a single request
+      parameters:
+      - description: Cat ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Batch delete request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/main.BatchDeleteRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.BatchDeleteResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: Batch cat file delete
+      tags:
+      - cats
+  /cats/{id}/batch/download:
+    post:
+      consumes:
+      - application/json
+      description: Download multiple cat files in a single request
+      parameters:
+      - description: Cat ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Batch download request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/main.BatchDownloadRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.BatchDownloadResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: Batch cat file download
+      tags:
+      - cats
+  /cats/{id}/batch/upload:
     post:
       consumes:
       - multipart/form-data
-      description: Upload a document for a specific courier (not implemented in demo)
+      description: Upload multiple cat files in a single request
       parameters:
-      - description: Courier ID
+      - description: Cat ID
         in: path
         name: id
         required: true
         type: string
-      - description: Document file
+      - description: Files to upload
         in: formData
-        name: file
+        name: files
         required: true
         type: file
+      - description: User ID
+        in: formData
+        name: user_id
+        required: true
+        type: string
       produces:
       - application/json
       responses:
         "200":
-          description: Not implemented in demo
+          description: OK
           schema:
-            additionalProperties: true
-            type: object
-      summary: Upload Courier Document
+            $ref: '#/definitions/main.BatchUploadResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: Batch cat file upload
       tags:
-      - Couriers
-  /couriers/{id}/files:
+      - cats
+  /cats/{id}/files:
     get:
       consumes:
       - application/json
-      description: List all files belonging to a specific courier (not implemented
-        in demo)
+      description: List all files belonging to a specific cat
       parameters:
-      - description: Courier ID
+      - description: Cat ID
         in: path
         name: id
         required: true
         type: string
+      - description: 'Maximum number of files to return (default: 50)'
+        in: query
+        name: limit
+        type: integer
+      - description: 'Number of files to skip (default: 0)'
+        in: query
+        name: offset
+        type: integer
       produces:
       - application/json
       responses:
         "200":
-          description: Not implemented in demo
+          description: List of cat files
+          schema:
+            allOf:
+            - $ref: '#/definitions/main.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/main.ListFilesResponse'
+              type: object
+        "401":
+          description: Unauthorized
           schema:
             additionalProperties: true
             type: object
-      summary: List Courier Files
+        "403":
+          description: Forbidden - access denied
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties: true
+            type: object
+        "503":
+          description: Service unavailable
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: List Cat Files
       tags:
-      - Couriers
-  /couriers/{id}/files/{fileId}:
+      - Cats
+  /cats/{id}/files/{fileId}:
     delete:
       consumes:
       - application/json
-      description: Delete a file belonging to a specific courier (not implemented
-        in demo)
+      description: Delete a file belonging to a specific cat. Accepts either the metadata
+        ID or the file key from upload response.
       parameters:
-      - description: Courier ID
+      - description: Cat ID
         in: path
         name: id
         required: true
         type: string
-      - description: File ID
+      - description: File identifier - can be either metadata ID (e.g., '9498ac3a-57b3-4a6e-9dad-9ec915ffa1b9')
+          or file key (e.g., 'cat/cat/123/photo/1757314047_50a7135e-6612-48ff-b3a6-16f3f1595cbe.png')
         in: path
         name: fileId
         required: true
@@ -186,25 +497,52 @@ paths:
       - application/json
       responses:
         "200":
-          description: Not implemented in demo
+          description: File deleted successfully
+          schema:
+            $ref: '#/definitions/main.SuccessResponse'
+        "401":
+          description: Unauthorized
           schema:
             additionalProperties: true
             type: object
-      summary: Delete Courier File
+        "403":
+          description: Forbidden - access denied
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: File not found
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties: true
+            type: object
+        "503":
+          description: Service unavailable
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Delete Cat File
       tags:
-      - Couriers
+      - Cats
     get:
       consumes:
       - application/json
-      description: Download a file belonging to a specific courier (not implemented
-        in demo)
+      description: Download a file belonging to a specific cat. Accepts either the
+        metadata ID or the file key from upload response.
       parameters:
-      - description: Courier ID
+      - description: Cat ID
         in: path
         name: id
         required: true
         type: string
-      - description: File ID
+      - description: File identifier - can be either metadata ID (e.g., '9498ac3a-57b3-4a6e-9dad-9ec915ffa1b9')
+          or file key (e.g., 'cat/cat/123/photo/1757314047_50a7135e-6612-48ff-b3a6-16f3f1595cbe.png')
         in: path
         name: fileId
         required: true
@@ -213,26 +551,456 @@ paths:
       - application/octet-stream
       responses:
         "200":
-          description: Not implemented in demo
+          description: File content
+          schema:
+            type: file
+        "401":
+          description: Unauthorized
           schema:
             additionalProperties: true
             type: object
-      summary: Get Courier File
+        "403":
+          description: Forbidden - access denied
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: File not found
+          schema:
+            additionalProperties: true
+            type: object
+        "503":
+          description: Service unavailable
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Download Cat File
       tags:
-      - Couriers
-  /couriers/{id}/vehicle/upload:
+      - Cats
+  /cats/{id}/presigned/download:
     post:
       consumes:
-      - multipart/form-data
-      description: Upload a vehicle image for a specific courier (not implemented
-        in demo)
+      - application/json
+      description: Generate a presigned URL for direct cat file download from MinIO
       parameters:
-      - description: Courier ID
+      - description: Cat ID
         in: path
         name: id
         required: true
         type: string
-      - description: Vehicle image file
+      - description: Presigned URL request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/main.PresignedURLRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.PresignedURLResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: Generate presigned download URL for cat
+      tags:
+      - cats
+  /cats/{id}/presigned/upload:
+    post:
+      consumes:
+      - application/json
+      description: Generate a presigned URL for direct cat file upload to MinIO
+      parameters:
+      - description: Cat ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Presigned URL request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/main.PresignedURLRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.PresignedURLResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: Generate presigned upload URL for cat
+      tags:
+      - cats
+  /dogs/{id}/batch/delete:
+    post:
+      consumes:
+      - application/json
+      description: Delete multiple dog files in a single request
+      parameters:
+      - description: Dog ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Batch delete request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/main.BatchDeleteRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.BatchDeleteResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: Batch dog file delete
+      tags:
+      - dogs
+  /dogs/{id}/batch/download:
+    post:
+      consumes:
+      - application/json
+      description: Download multiple dog files in a single request
+      parameters:
+      - description: Dog ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Batch download request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/main.BatchDownloadRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.BatchDownloadResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: Batch dog file download
+      tags:
+      - dogs
+  /dogs/{id}/batch/upload:
+    post:
+      consumes:
+      - multipart/form-data
+      description: Upload multiple dog files in a single request
+      parameters:
+      - description: Dog ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Files to upload
+        in: formData
+        name: files
+        required: true
+        type: file
+      - description: User ID
+        in: formData
+        name: user_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.BatchUploadResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: Batch dog file upload
+      tags:
+      - dogs
+  /dogs/{id}/files:
+    get:
+      consumes:
+      - application/json
+      description: List all files belonging to a specific dog
+      parameters:
+      - description: Dog ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: 'Maximum number of files to return (default: 50)'
+        in: query
+        name: limit
+        type: integer
+      - description: 'Number of files to skip (default: 0)'
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of dog files
+          schema:
+            allOf:
+            - $ref: '#/definitions/main.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/main.ListFilesResponse'
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Forbidden - access denied
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties: true
+            type: object
+        "503":
+          description: Service unavailable
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: List Dog Files
+      tags:
+      - Dogs
+  /dogs/{id}/files/{fileId}:
+    delete:
+      consumes:
+      - application/json
+      description: Delete a file belonging to a specific dog. Accepts either the metadata
+        ID or the file key from upload response.
+      parameters:
+      - description: Dog ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: File identifier - can be either metadata ID (e.g., '9498ac3a-57b3-4a6e-9dad-9ec915ffa1b9')
+          or file key (e.g., 'dog/dog/456/photo/1757314047_50a7135e-6612-48ff-b3a6-16f3f1595cbe.png')
+        in: path
+        name: fileId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: File deleted successfully
+          schema:
+            $ref: '#/definitions/main.SuccessResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Forbidden - access denied
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: File not found
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties: true
+            type: object
+        "503":
+          description: Service unavailable
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Delete Dog File
+      tags:
+      - Dogs
+    get:
+      consumes:
+      - application/json
+      description: Download a file belonging to a specific dog. Accepts either the
+        metadata ID or the file key from upload response.
+      parameters:
+      - description: Dog ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: File identifier - can be either metadata ID (e.g., '9498ac3a-57b3-4a6e-9dad-9ec915ffa1b9')
+          or file key (e.g., 'dog/dog/456/photo/1757314047_50a7135e-6612-48ff-b3a6-16f3f1595cbe.png')
+        in: path
+        name: fileId
+        required: true
+        type: string
+      produces:
+      - application/octet-stream
+      responses:
+        "200":
+          description: File content
+          schema:
+            type: file
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Forbidden - access denied
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: File not found
+          schema:
+            additionalProperties: true
+            type: object
+        "503":
+          description: Service unavailable
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Download Dog File
+      tags:
+      - Dogs
+  /dogs/{id}/presigned/download:
+    post:
+      consumes:
+      - application/json
+      description: Generate a presigned URL for direct dog file download from MinIO
+      parameters:
+      - description: Dog ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Presigned URL request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/main.PresignedURLRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.PresignedURLResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: Generate presigned download URL for dog
+      tags:
+      - dogs
+  /dogs/{id}/presigned/upload:
+    post:
+      consumes:
+      - application/json
+      description: Generate a presigned URL for direct dog file upload to MinIO
+      parameters:
+      - description: Dog ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Presigned URL request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/main.PresignedURLRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.PresignedURLResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: Generate presigned upload URL for dog
+      tags:
+      - dogs
+  /dogs/{id}/upload:
+    post:
+      consumes:
+      - multipart/form-data
+      description: Upload a photo for a specific dog with validation and thumbnail
+        generation
+      parameters:
+      - description: Dog ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Dog photo file (JPEG, PNG, WebP)
         in: formData
         name: file
         required: true
@@ -241,13 +1009,39 @@ paths:
       - application/json
       responses:
         "200":
-          description: Not implemented in demo
+          description: File uploaded successfully
+          schema:
+            allOf:
+            - $ref: '#/definitions/main.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/main.UploadResponse'
+              type: object
+        "400":
+          description: Bad request - validation error
           schema:
             additionalProperties: true
             type: object
-      summary: Upload Courier Vehicle Image
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+        "413":
+          description: File too large
+          schema:
+            additionalProperties: true
+            type: object
+        "503":
+          description: Service unavailable
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Upload Dog Photo
       tags:
-      - Couriers
+      - Dogs
   /files/{fileId}/preview:
     get:
       consumes:
@@ -353,346 +1147,36 @@ paths:
       summary: Health Check
       tags:
       - System
-  /test/download:
-    get:
-      consumes:
-      - application/json
-      description: Get instructions for testing file download functionality
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Download test instructions
-          schema:
-            additionalProperties: true
-            type: object
-      summary: Test Download Endpoint
-      tags:
-      - Test
-  /test/upload:
-    get:
-      consumes:
-      - application/json
-      description: Get instructions for testing file upload functionality
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Upload test instructions
-          schema:
-            additionalProperties: true
-            type: object
-      summary: Test Upload Endpoint
-      tags:
-      - Test
-  /test/validation:
-    get:
-      consumes:
-      - application/json
-      description: Get validation rules and requirements for file uploads
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Validation rules and requirements
-          schema:
-            additionalProperties: true
-            type: object
-      summary: Test Validation Endpoint
-      tags:
-      - Test
-  /users/{id}/documents/upload:
+  /presigned/batch-upload:
     post:
       consumes:
-      - multipart/form-data
-      description: Upload a document for a specific user with metadata validation
+      - application/json
+      description: Generate multiple presigned URLs for batch file upload
       parameters:
-      - description: User ID
-        in: path
-        name: id
+      - description: Batch presigned URL request
+        in: body
+        name: request
         required: true
-        type: string
-      - description: Document file (PDF, JPEG, PNG)
-        in: formData
-        name: file
-        required: true
-        type: file
-      - description: Document title
-        in: formData
-        name: title
-        required: true
-        type: string
-      - description: Document author
-        in: formData
-        name: author
-        required: true
-        type: string
-      - description: Document description
-        in: formData
-        name: description
-        type: string
+        schema:
+          $ref: '#/definitions/main.BatchPresignedURLRequest'
       produces:
       - application/json
       responses:
         "200":
-          description: Document uploaded successfully
+          description: OK
           schema:
-            allOf:
-            - $ref: '#/definitions/main.SuccessResponse'
-            - properties:
-                data:
-                  $ref: '#/definitions/main.UploadResponse'
-              type: object
+            $ref: '#/definitions/main.BatchPresignedURLResponse'
         "400":
-          description: Bad request - validation error
+          description: Bad Request
           schema:
-            additionalProperties: true
-            type: object
-        "401":
-          description: Unauthorized
-          schema:
-            additionalProperties: true
-            type: object
-        "413":
-          description: File too large
-          schema:
-            additionalProperties: true
-            type: object
-        "503":
-          description: Service unavailable
-          schema:
-            additionalProperties: true
-            type: object
-      security:
-      - ApiKeyAuth: []
-      summary: Upload User Document
-      tags:
-      - Users
-  /users/{id}/files:
-    get:
-      consumes:
-      - application/json
-      description: List all files belonging to a specific user with optional filtering
-        by category
-      parameters:
-      - description: User ID
-        in: path
-        name: id
-        required: true
-        type: string
-      - description: Filter by category (profile, document)
-        in: query
-        name: category
-        type: string
-      - description: 'Maximum number of files to return (default: 50)'
-        in: query
-        name: limit
-        type: integer
-      - description: 'Number of files to skip (default: 0)'
-        in: query
-        name: offset
-        type: integer
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: List of user files
-          schema:
-            allOf:
-            - $ref: '#/definitions/main.SuccessResponse'
-            - properties:
-                data:
-                  $ref: '#/definitions/main.ListFilesResponse'
-              type: object
-        "401":
-          description: Unauthorized
-          schema:
-            additionalProperties: true
-            type: object
-        "403":
-          description: Forbidden - access denied
-          schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/main.ErrorResponse'
         "500":
-          description: Internal server error
+          description: Internal Server Error
           schema:
-            additionalProperties: true
-            type: object
-        "503":
-          description: Service unavailable
-          schema:
-            additionalProperties: true
-            type: object
-      security:
-      - ApiKeyAuth: []
-      summary: List User Files
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: Generate batch presigned upload URLs
       tags:
-      - Users
-  /users/{id}/files/{category}/{fileId}:
-    delete:
-      consumes:
-      - application/json
-      description: Delete a file belonging to a specific user by file ID and category
-      parameters:
-      - description: User ID
-        in: path
-        name: id
-        required: true
-        type: string
-      - description: File category (profile, document)
-        in: path
-        name: category
-        required: true
-        type: string
-      - description: File ID
-        in: path
-        name: fileId
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: File deleted successfully
-          schema:
-            $ref: '#/definitions/main.SuccessResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            additionalProperties: true
-            type: object
-        "403":
-          description: Forbidden - access denied
-          schema:
-            additionalProperties: true
-            type: object
-        "404":
-          description: File not found
-          schema:
-            additionalProperties: true
-            type: object
-        "500":
-          description: Internal server error
-          schema:
-            additionalProperties: true
-            type: object
-        "503":
-          description: Service unavailable
-          schema:
-            additionalProperties: true
-            type: object
-      security:
-      - ApiKeyAuth: []
-      summary: Delete User File
-      tags:
-      - Users
-    get:
-      consumes:
-      - application/json
-      description: Download a file belonging to a specific user by file ID and category
-      parameters:
-      - description: User ID
-        in: path
-        name: id
-        required: true
-        type: string
-      - description: File category (profile, document)
-        in: path
-        name: category
-        required: true
-        type: string
-      - description: File ID
-        in: path
-        name: fileId
-        required: true
-        type: string
-      produces:
-      - application/octet-stream
-      responses:
-        "200":
-          description: File content
-          schema:
-            type: file
-        "401":
-          description: Unauthorized
-          schema:
-            additionalProperties: true
-            type: object
-        "403":
-          description: Forbidden - access denied
-          schema:
-            additionalProperties: true
-            type: object
-        "404":
-          description: File not found
-          schema:
-            additionalProperties: true
-            type: object
-        "503":
-          description: Service unavailable
-          schema:
-            additionalProperties: true
-            type: object
-      security:
-      - ApiKeyAuth: []
-      summary: Download User File
-      tags:
-      - Users
-  /users/{id}/profile/upload:
-    post:
-      consumes:
-      - multipart/form-data
-      description: Upload a profile image for a specific user with validation and
-        security checks
-      parameters:
-      - description: User ID
-        in: path
-        name: id
-        required: true
-        type: string
-      - description: Profile image file (JPEG, PNG, WebP)
-        in: formData
-        name: file
-        required: true
-        type: file
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: File uploaded successfully
-          schema:
-            allOf:
-            - $ref: '#/definitions/main.SuccessResponse'
-            - properties:
-                data:
-                  $ref: '#/definitions/main.UploadResponse'
-              type: object
-        "400":
-          description: Bad request - validation error
-          schema:
-            additionalProperties: true
-            type: object
-        "401":
-          description: Unauthorized
-          schema:
-            additionalProperties: true
-            type: object
-        "413":
-          description: File too large
-          schema:
-            additionalProperties: true
-            type: object
-        "503":
-          description: Service unavailable
-          schema:
-            additionalProperties: true
-            type: object
-      security:
-      - ApiKeyAuth: []
-      summary: Upload User Profile Image
-      tags:
-      - Users
+      - presigned
 securityDefinitions:
   ApiKeyAuth:
     in: header

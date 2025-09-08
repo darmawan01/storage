@@ -62,6 +62,9 @@ const (
 	AuditMiddlewareType      MiddlewareType = "audit"
 	CDNMiddlewareType        MiddlewareType = "cdn"
 	ValidationMiddlewareType MiddlewareType = "validation"
+	MemoryMiddlewareType     MiddlewareType = "memory"
+	CacheMiddlewareType      MiddlewareType = "cache"
+	MonitoringMiddlewareType MiddlewareType = "monitoring"
 )
 
 // MiddlewareConfig represents configuration for a middleware

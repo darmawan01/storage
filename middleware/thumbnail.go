@@ -10,18 +10,18 @@ import (
 	"io"
 	"strconv"
 	"strings"
+	"time"
 
 	_ "image/gif"
-	_ "image/jpeg"
-	_ "image/png"
 
 	"github.com/minio/minio-go/v7"
 )
 
 // ThumbnailMiddleware handles thumbnail generation
 type ThumbnailMiddleware struct {
-	config ThumbnailConfig
-	client *minio.Client
+	config         ThumbnailConfig
+	client         *minio.Client
+	asyncProcessor *AsyncProcessor
 }
 
 // ThumbnailConfig represents thumbnail middleware configuration
@@ -37,6 +37,10 @@ type ThumbnailConfig struct {
 	// Storage settings
 	ThumbnailBucket string `json:"thumbnail_bucket,omitempty"`
 	ThumbnailPrefix string `json:"thumbnail_prefix,omitempty"`
+
+	// Async processing settings
+	AsyncProcessing bool        `json:"async_processing,omitempty"` // Enable async thumbnail generation
+	AsyncConfig     AsyncConfig `json:"async_config,omitempty"`     // Async processor configuration
 }
 
 // NewThumbnailMiddleware creates a new thumbnail middleware
@@ -52,9 +56,20 @@ func NewThumbnailMiddleware(config ThumbnailConfig, client *minio.Client) *Thumb
 		config.ThumbnailPrefix = "thumbnails"
 	}
 
+	// Initialize async processor if async processing is enabled
+	var asyncProcessor *AsyncProcessor
+	if config.AsyncProcessing {
+		asyncConfig := config.AsyncConfig
+		if asyncConfig.Workers == 0 {
+			asyncConfig = DefaultAsyncConfig()
+		}
+		asyncProcessor = NewAsyncProcessor(asyncConfig, client, config.ThumbnailBucket)
+	}
+
 	return &ThumbnailMiddleware{
-		config: config,
-		client: client,
+		config:         config,
+		client:         client,
+		asyncProcessor: asyncProcessor,
 	}
 }
 
@@ -88,16 +103,66 @@ func (m *ThumbnailMiddleware) Process(ctx context.Context, req *StorageRequest, 
 
 	// Generate thumbnails after successful upload
 	if response.Success && response.FileKey != "" {
-		thumbnails, err := m.generateThumbnails(ctx, req, response.FileKey)
-		if err != nil {
-			// Log error but don't fail the upload
-			fmt.Printf("Failed to generate thumbnails: %v\n", err)
+		if m.config.AsyncProcessing && m.asyncProcessor != nil {
+			// Submit thumbnail job for async processing
+			job := ThumbnailJob{
+				FileKey:     response.FileKey,
+				FileData:    req.FileData,
+				FileSize:    req.FileSize,
+				ContentType: req.ContentType,
+				Sizes:       m.config.ThumbnailSizes,
+				BucketName:  m.config.ThumbnailBucket,
+				Metadata:    req.Metadata,
+			}
+
+			// Set callback to update response when thumbnails are ready
+			job.Callback = func(thumbResponse *ThumbnailResponse) {
+				if thumbResponse.Success {
+					response.Thumbnails = thumbResponse.Thumbnails
+					fmt.Printf("✅ Async thumbnails generated for %s\n", response.FileKey)
+				} else {
+					fmt.Printf("❌ Async thumbnail generation failed for %s: %v\n", response.FileKey, thumbResponse.Error)
+				}
+			}
+
+			if err := m.asyncProcessor.SubmitJob(job); err != nil {
+				fmt.Printf("Failed to submit thumbnail job: %v\n", err)
+			} else {
+				fmt.Printf("📋 Thumbnail job submitted for %s\n", response.FileKey)
+			}
 		} else {
-			response.Thumbnails = thumbnails
+			// Synchronous thumbnail generation
+			thumbnails, err := m.generateThumbnails(ctx, req, response.FileKey)
+			if err != nil {
+				// Log error but don't fail the upload
+				fmt.Printf("Failed to generate thumbnails: %v\n", err)
+			} else {
+				response.Thumbnails = thumbnails
+			}
 		}
 	}
 
 	return response, nil
+}
+
+// Stop stops the async processor
+func (m *ThumbnailMiddleware) Stop() {
+	if m.asyncProcessor != nil {
+		m.asyncProcessor.Stop()
+	}
+}
+
+// GetAsyncStats returns async processor statistics
+func (m *ThumbnailMiddleware) GetAsyncStats() map[string]interface{} {
+	if m.asyncProcessor == nil {
+		return map[string]interface{}{
+			"async_enabled": false,
+		}
+	}
+
+	stats := m.asyncProcessor.GetStats()
+	stats["async_enabled"] = true
+	return stats
 }
 
 // generateThumbnails generates thumbnails for the uploaded file
@@ -155,9 +220,13 @@ func (m *ThumbnailMiddleware) generateThumbnails(ctx context.Context, req *Stora
 
 // getOriginalFile retrieves the original file from storage
 func (m *ThumbnailMiddleware) getOriginalFile(ctx context.Context, fileKey string) (io.ReadCloser, error) {
-	// TODO: This should be implemented to get the file from the appropriate bucket
-	// For now, return an error as this requires integration with the storage system
-	return nil, fmt.Errorf("getOriginalFile not implemented")
+	// Get the object from MinIO
+	object, err := m.client.GetObject(ctx, m.config.ThumbnailBucket, fileKey, minio.GetObjectOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get object from MinIO: %w", err)
+	}
+
+	return object, nil
 }
 
 // createThumbnail creates a thumbnail from the original image
@@ -238,9 +307,33 @@ func (m *ThumbnailMiddleware) resizeImage(img image.Image, width, height int) im
 
 // uploadThumbnail uploads a thumbnail to storage
 func (m *ThumbnailMiddleware) uploadThumbnail(ctx context.Context, key string, data []byte, format string) (string, error) {
-	// TODO: This should be implemented to upload to the appropriate bucket
-	// For now, return a placeholder URL
-	return fmt.Sprintf("https://storage.example.com/%s", key), nil
+	// Create a reader from the byte data
+	reader := bytes.NewReader(data)
+
+	// Determine content type based on format
+	contentType := "image/jpeg"
+	if format == "png" {
+		contentType = "image/png"
+	}
+
+	// Upload the thumbnail to MinIO
+	_, err := m.client.PutObject(
+		ctx,
+		m.config.ThumbnailBucket,
+		key,
+		reader,
+		int64(len(data)),
+		minio.PutObjectOptions{
+			ContentType: contentType,
+		},
+	)
+	if err != nil {
+		return "", fmt.Errorf("failed to upload thumbnail to MinIO: %w", err)
+	}
+
+	// Generate the thumbnail URL
+	thumbnailURL := fmt.Sprintf("/api/v1/files/%s/thumbnail?size=%s", key, "thumbnail")
+	return thumbnailURL, nil
 }
 
 // generateThumbnailKey generates a key for the thumbnail
@@ -305,18 +398,31 @@ func (m *ThumbnailMiddleware) GetThumbnailURL(ctx context.Context, fileKey, size
 
 	if !exists {
 		// Generate thumbnail on demand
-		// TODO: Implement on-demand thumbnail generation
-		return "", fmt.Errorf("thumbnail not found and on-demand generation not implemented")
+		// This would require the original file, which we don't have in this context
+		// For now, return an error indicating the thumbnail needs to be generated
+		return "", fmt.Errorf("thumbnail not found - please upload the file first to generate thumbnails")
 	}
 
 	// Generate presigned URL for thumbnail
-	// TODO: Implement presigned URL generation
-	return fmt.Sprintf("https://storage.example.com/%s", thumbnailKey), nil
+	presignedURL, err := m.client.PresignedGetObject(ctx, m.config.ThumbnailBucket, thumbnailKey, 24*time.Hour, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to generate presigned URL: %w", err)
+	}
+
+	return presignedURL.String(), nil
 }
 
 // thumbnailExists checks if a thumbnail exists
 func (m *ThumbnailMiddleware) thumbnailExists(ctx context.Context, thumbnailKey string) (bool, error) {
-	// TODO: Implement thumbnail existence check
-	// This would involve checking the storage system
-	return false, nil
+	// Check if the thumbnail exists in MinIO
+	_, err := m.client.StatObject(ctx, m.config.ThumbnailBucket, thumbnailKey, minio.StatObjectOptions{})
+	if err != nil {
+		// If the object doesn't exist, minio returns a specific error
+		if minio.ToErrorResponse(err).Code == "NoSuchKey" {
+			return false, nil
+		}
+		return false, fmt.Errorf("failed to check thumbnail existence: %w", err)
+	}
+
+	return true, nil
 }

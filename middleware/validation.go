@@ -3,6 +3,11 @@ package middleware
 import (
 	"context"
 	"fmt"
+	"image"
+	_ "image/gif"
+	_ "image/jpeg"
+	_ "image/png"
+	"io"
 	"path/filepath"
 	"strings"
 )
@@ -193,33 +198,198 @@ func (m *ValidationMiddleware) validateContentType(req *StorageRequest) error {
 
 // validateImage performs image-specific validation
 func (m *ValidationMiddleware) validateImage(req *StorageRequest, config ImageValidationConfig) error {
-	// TODO: Implement image validation
-	// This would involve decoding the image and checking dimensions, quality, etc.
-	// For now, return nil (no validation)
+	// Read the image data
+	reader := req.FileData
+	if reader == nil {
+		return fmt.Errorf("no file data provided for image validation")
+	}
+
+	// Decode the image to get dimensions and format
+	img, format, err := image.Decode(reader)
+	if err != nil {
+		return fmt.Errorf("failed to decode image: %w", err)
+	}
+
+	// Get image dimensions
+	bounds := img.Bounds()
+	width := bounds.Dx()
+	height := bounds.Dy()
+
+	// Validate format
+	if len(config.AllowedFormats) > 0 {
+		formatValid := false
+		for _, allowedFormat := range config.AllowedFormats {
+			if strings.EqualFold(format, allowedFormat) {
+				formatValid = true
+				break
+			}
+		}
+		if !formatValid {
+			return fmt.Errorf("image format %s not allowed, allowed formats: %v", format, config.AllowedFormats)
+		}
+	}
+
+	// Validate dimensions
+	if config.MinWidth > 0 && width < config.MinWidth {
+		return fmt.Errorf("image width %d is below minimum %d", width, config.MinWidth)
+	}
+	if config.MaxWidth > 0 && width > config.MaxWidth {
+		return fmt.Errorf("image width %d exceeds maximum %d", width, config.MaxWidth)
+	}
+	if config.MinHeight > 0 && height < config.MinHeight {
+		return fmt.Errorf("image height %d is below minimum %d", height, config.MinHeight)
+	}
+	if config.MaxHeight > 0 && height > config.MaxHeight {
+		return fmt.Errorf("image height %d exceeds maximum %d", height, config.MaxHeight)
+	}
+
+	// Validate aspect ratio
+	if config.MinAspectRatio > 0 || config.MaxAspectRatio > 0 {
+		aspectRatio := float64(width) / float64(height)
+		if config.MinAspectRatio > 0 && aspectRatio < config.MinAspectRatio {
+			return fmt.Errorf("image aspect ratio %.2f is below minimum %.2f", aspectRatio, config.MinAspectRatio)
+		}
+		if config.MaxAspectRatio > 0 && aspectRatio > config.MaxAspectRatio {
+			return fmt.Errorf("image aspect ratio %.2f exceeds maximum %.2f", aspectRatio, config.MaxAspectRatio)
+		}
+	}
+
 	return nil
 }
 
 // validatePDF performs PDF-specific validation
 func (m *ValidationMiddleware) validatePDF(req *StorageRequest, config PDFValidationConfig) error {
-	// TODO: Implement PDF validation
-	// This would involve parsing the PDF and checking structure, pages, metadata, etc.
-	// For now, return nil (no validation)
+	// Basic PDF validation - check file header
+	reader := req.FileData
+	if reader == nil {
+		return fmt.Errorf("no file data provided for PDF validation")
+	}
+
+	// Read first few bytes to check PDF header
+	header := make([]byte, 8)
+	n, err := reader.Read(header)
+	if err != nil && err != io.EOF {
+		return fmt.Errorf("failed to read PDF header: %w", err)
+	}
+
+	// Check if it starts with PDF signature
+	if n < 4 || string(header[:4]) != "%PDF" {
+		return fmt.Errorf("invalid PDF file: missing PDF signature")
+	}
+
+	// Basic structure validation would require a PDF parser library
+	// For now, we just validate the header and basic requirements
+	if config.ValidateStructure {
+		// This would require a proper PDF parsing library like unidoc/unipdf
+		// For now, just return a warning that full validation is not implemented
+		return fmt.Errorf("PDF structure validation not fully implemented - requires PDF parsing library")
+	}
+
 	return nil
 }
 
 // validateVideo performs video-specific validation
 func (m *ValidationMiddleware) validateVideo(req *StorageRequest, config VideoValidationConfig) error {
-	// TODO: Implement video validation
-	// This would involve parsing the video and checking duration, resolution, codec, etc.
-	// For now, return nil (no validation)
+	// Basic video validation - check file extension and basic structure
+	reader := req.FileData
+	if reader == nil {
+		return fmt.Errorf("no file data provided for video validation")
+	}
+
+	// Read first few bytes to check video container signature
+	header := make([]byte, 12)
+	n, err := reader.Read(header)
+	if err != nil && err != io.EOF {
+		return fmt.Errorf("failed to read video header: %w", err)
+	}
+
+	// Basic container format detection
+	// This is a simplified check - proper video validation would require ffmpeg or similar
+	if n >= 4 {
+		// Check for common video container signatures
+		signature := string(header[:4])
+		validSignatures := []string{
+			"\x00\x00\x00\x20", // MP4
+			"ftyp",             // MP4/MOV
+			"\x1a\x45\xdf\xa3", // Matroska (MKV)
+			"RIFF",             // AVI
+		}
+
+		valid := false
+		for _, sig := range validSignatures {
+			if strings.HasPrefix(signature, sig) {
+				valid = true
+				break
+			}
+		}
+
+		if !valid {
+			return fmt.Errorf("invalid video file: unrecognized container format")
+		}
+	}
+
+	// Note: Full video validation (duration, resolution, codec) would require
+	// a video processing library like ffmpeg or gst-libav
+	// For now, we just do basic container validation
+
 	return nil
 }
 
 // validateAudio performs audio-specific validation
 func (m *ValidationMiddleware) validateAudio(req *StorageRequest, config AudioValidationConfig) error {
-	// TODO: Implement audio validation
-	// This would involve parsing the audio and checking duration, bitrate, sample rate, etc.
-	// For now, return nil (no validation)
+	// Basic audio validation - check file extension and basic structure
+	reader := req.FileData
+	if reader == nil {
+		return fmt.Errorf("no file data provided for audio validation")
+	}
+
+	// Read first few bytes to check audio format signature
+	header := make([]byte, 12)
+	n, err := reader.Read(header)
+	if err != nil && err != io.EOF {
+		return fmt.Errorf("failed to read audio header: %w", err)
+	}
+
+	// Basic audio format detection
+	// This is a simplified check - proper audio validation would require ffmpeg or similar
+	if n >= 4 {
+		// Check for common audio format signatures
+		signature := string(header[:4])
+		validSignatures := []string{
+			"RIFF",     // WAV
+			"OggS",     // OGG
+			"ID3",      // MP3 with ID3 tag
+			"\xff\xfb", // MP3 frame sync
+			"\xff\xf3", // MP3 frame sync
+			"\xff\xf2", // MP3 frame sync
+			"fLaC",     // FLAC
+		}
+
+		valid := false
+		for _, sig := range validSignatures {
+			if strings.HasPrefix(signature, sig) {
+				valid = true
+				break
+			}
+		}
+
+		// Also check for MP3 without ID3 tag (starts with frame sync)
+		if !valid && n >= 2 {
+			mp3Sync := []byte{0xff, 0xfb}
+			if header[0] == mp3Sync[0] && (header[1]&0xe0) == mp3Sync[1] {
+				valid = true
+			}
+		}
+
+		if !valid {
+			return fmt.Errorf("invalid audio file: unrecognized audio format")
+		}
+	}
+
+	// Note: Full audio validation (duration, bitrate, sample rate) would require
+	// an audio processing library like ffmpeg or gst-libav
+	// For now, we just do basic format validation
+
 	return nil
 }
 

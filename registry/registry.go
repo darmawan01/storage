@@ -3,6 +3,7 @@ package registry
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"sync"
 	"time"
 
@@ -34,11 +35,21 @@ func (r *Registry) Initialize(config config.StorageConfig) error {
 		return err
 	}
 
-	// Initialize MinIO client
+	// Create HTTP transport with performance optimizations
+	transport := &http.Transport{
+		MaxIdleConns:        config.MaxConnections,
+		MaxIdleConnsPerHost: config.MaxConnections / 2,
+		IdleConnTimeout:     time.Duration(config.ConnectionTimeout) * time.Second,
+		DisableCompression:  false,
+		DisableKeepAlives:   false,
+	}
+
+	// Initialize MinIO client with performance optimizations
 	client, err := minio.New(config.Endpoint, &minio.Options{
-		Creds:  credentials.NewStaticV4(config.AccessKey, config.SecretKey, ""),
-		Secure: config.UseSSL,
-		Region: config.Region,
+		Creds:     credentials.NewStaticV4(config.AccessKey, config.SecretKey, ""),
+		Secure:    config.UseSSL,
+		Region:    config.Region,
+		Transport: transport,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to initialize MinIO client: %w", err)
@@ -47,8 +58,8 @@ func (r *Registry) Initialize(config config.StorageConfig) error {
 	r.client = client
 	r.config = config
 
-	// Test connection
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	// Test connection with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(config.ConnectionTimeout)*time.Second)
 	defer cancel()
 
 	_, err = client.ListBuckets(ctx)
@@ -184,4 +195,76 @@ func (r *Registry) GetStats() map[string]interface{} {
 	}
 
 	return stats
+}
+
+// executeWithRetry executes a function with retry logic
+func (r *Registry) executeWithRetry(ctx context.Context, operation func() error) error {
+	var lastErr error
+
+	for attempt := 0; attempt <= r.config.RetryAttempts; attempt++ {
+		if attempt > 0 {
+			// Wait before retry
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(time.Duration(r.config.RetryDelay) * time.Millisecond):
+			}
+		}
+
+		lastErr = operation()
+		if lastErr == nil {
+			return nil
+		}
+
+		// Check if error is retryable
+		if !r.isRetryableError(lastErr) {
+			return lastErr
+		}
+	}
+
+	return fmt.Errorf("operation failed after %d attempts: %w", r.config.RetryAttempts+1, lastErr)
+}
+
+// isRetryableError determines if an error is retryable
+func (r *Registry) isRetryableError(err error) bool {
+	// Network errors, timeouts, and temporary failures are retryable
+	if err == nil {
+		return false
+	}
+
+	// Check for common retryable error patterns
+	errorStr := err.Error()
+	retryablePatterns := []string{
+		"timeout",
+		"connection refused",
+		"connection reset",
+		"temporary failure",
+		"network is unreachable",
+		"no route to host",
+		"i/o timeout",
+	}
+
+	for _, pattern := range retryablePatterns {
+		if contains(errorStr, pattern) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// contains checks if a string contains a substring (case-insensitive)
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) &&
+		(s == substr ||
+			(len(s) > len(substr) && containsSubstring(s, substr)))
+}
+
+func containsSubstring(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
 }

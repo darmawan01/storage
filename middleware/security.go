@@ -3,6 +3,7 @@ package middleware
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/minio/minio-go/v7"
@@ -181,39 +182,124 @@ func (m *SecurityMiddleware) processPreview(ctx context.Context, req *StorageReq
 
 // checkFileAccess checks if the user has access to the file
 func (m *SecurityMiddleware) checkFileAccess(ctx context.Context, req *StorageRequest) error {
-	// TODO: Implement file access checking
-	// This would involve checking file metadata for permissions
-	// and verifying user access rights
+	// Get user ID from context
+	userID, ok := ctx.Value("user_id").(string)
+	if !ok {
+		return fmt.Errorf("user ID not found in context")
+	}
 
-	// For now, return nil (allow access)
-	return nil
+	// Check if file is public
+	if req.Metadata != nil {
+		if isPublic, ok := req.Metadata["is_public"].(bool); ok && isPublic {
+			return nil // Public files are accessible to everyone
+		}
+	}
+
+	// For private files, check if user has access
+	// Basic implementation: allow access if user ID matches uploader
+	if req.Metadata != nil {
+		if uploadedBy, ok := req.Metadata["uploaded_by"].(string); ok && uploadedBy == userID {
+			return nil
+		}
+	}
+
+	// Check if user has admin role
+	roles := m.getUserRoles(ctx, userID)
+	for _, role := range roles {
+		if role == "admin" || role == "moderator" {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("access denied: insufficient permissions")
 }
 
 // checkFileOwnership checks if the user owns the file
 func (m *SecurityMiddleware) checkFileOwnership(ctx context.Context, req *StorageRequest) error {
-	// TODO: Implement file ownership checking
-	// This would involve checking file metadata for owner information
+	// Get user ID from context
+	userID, ok := ctx.Value("user_id").(string)
+	if !ok {
+		return fmt.Errorf("user ID not found in context")
+	}
 
-	// For now, return nil (allow access)
-	return nil
+	// Check if user owns the file
+	if req.Metadata != nil {
+		if uploadedBy, ok := req.Metadata["uploaded_by"].(string); ok && uploadedBy == userID {
+			return nil
+		}
+	}
+
+	// Check if user has admin role
+	roles := m.getUserRoles(ctx, userID)
+	for _, role := range roles {
+		if role == "admin" {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("access denied: user does not own this file")
 }
 
 // checkDownloadLimit checks if the download limit has been exceeded
 func (m *SecurityMiddleware) checkDownloadLimit(ctx context.Context, req *StorageRequest) error {
-	// TODO: Implement download limit checking
-	// This would involve tracking download counts per file/user
+	// Get user ID from context
+	userID, ok := ctx.Value("user_id").(string)
+	if !ok {
+		return fmt.Errorf("user ID not found in context")
+	}
 
-	// For now, return nil (allow download)
+	// Check download limits based on user role
+	roles := m.getUserRoles(ctx, userID)
+
+	// Admin users have no limits
+	for _, role := range roles {
+		if role == "admin" {
+			return nil
+		}
+	}
+
+	// Basic implementation: limit large file downloads
+	if req.FileSize > 100*1024*1024 { // 100MB limit
+		// Check if user has premium role
+		hasPremium := false
+		for _, role := range roles {
+			if role == "premium" || role == "vip" {
+				hasPremium = true
+				break
+			}
+		}
+
+		if !hasPremium {
+			return fmt.Errorf("download limit exceeded: file too large for basic users")
+		}
+	}
+
 	return nil
 }
 
 // getUserRoles retrieves user roles from context or external service
 func (m *SecurityMiddleware) getUserRoles(ctx context.Context, userID string) []string {
-	// TODO: Implement user role retrieval
-	// This would typically involve querying a user service or database
+	// First try to get roles from context
+	if roles, ok := ctx.Value("user_roles").([]string); ok {
+		return roles
+	}
 
-	// For now, return empty slice
-	return []string{}
+	// Basic implementation: return roles based on user ID patterns
+	// In a real implementation, this would query a user service or database
+	roles := []string{"user"} // Default role
+
+	// Add additional roles based on user ID patterns (for demo purposes)
+	if strings.HasPrefix(userID, "admin-") {
+		roles = append(roles, "admin")
+	} else if strings.HasPrefix(userID, "premium-") {
+		roles = append(roles, "premium")
+	} else if strings.HasPrefix(userID, "vip-") {
+		roles = append(roles, "vip")
+	} else if strings.HasPrefix(userID, "mod-") {
+		roles = append(roles, "moderator")
+	}
+
+	return roles
 }
 
 // hasRequiredRole checks if the user has any of the required roles

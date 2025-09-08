@@ -7,8 +7,11 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
+	"os"
+	"strings"
 )
 
 // EncryptionMiddleware handles file encryption/decryption
@@ -247,23 +250,63 @@ func (m *EncryptionMiddleware) getEncryptionKey() ([]byte, error) {
 
 // getKeyFromEnv retrieves the key from environment variable
 func (m *EncryptionMiddleware) getKeyFromEnv() ([]byte, error) {
-	// TODO: Implement environment variable key retrieval
-	// For now, return a placeholder key
-	return []byte("01234567890123456789012345678901"), nil // 32 bytes for AES-256
+	// Get key from environment variable
+	keyStr := os.Getenv("STORAGE_ENCRYPTION_KEY")
+	if keyStr == "" {
+		return nil, fmt.Errorf("STORAGE_ENCRYPTION_KEY environment variable not set")
+	}
+
+	// Decode hex string to bytes
+	key, err := hex.DecodeString(keyStr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid hex key in environment variable: %w", err)
+	}
+
+	// Validate key length (AES-256 requires 32 bytes)
+	if len(key) != 32 {
+		return nil, fmt.Errorf("encryption key must be 32 bytes (256 bits) for AES-256")
+	}
+
+	return key, nil
 }
 
 // getKeyFromFile retrieves the key from file
 func (m *EncryptionMiddleware) getKeyFromFile() ([]byte, error) {
-	// TODO: Implement file-based key retrieval
-	// For now, return a placeholder key
-	return []byte("01234567890123456789012345678901"), nil // 32 bytes for AES-256
+	// Get key file path from config or environment
+	keyPath := m.config.KeyPath
+	if keyPath == "" {
+		keyPath = os.Getenv("STORAGE_ENCRYPTION_KEY_FILE")
+	}
+	if keyPath == "" {
+		return nil, fmt.Errorf("encryption key file path not configured")
+	}
+
+	// Read key from file
+	keyData, err := os.ReadFile(keyPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read key file: %w", err)
+	}
+
+	// Decode hex string to bytes
+	keyStr := strings.TrimSpace(string(keyData))
+	key, err := hex.DecodeString(keyStr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid hex key in file: %w", err)
+	}
+
+	// Validate key length (AES-256 requires 32 bytes)
+	if len(key) != 32 {
+		return nil, fmt.Errorf("encryption key must be 32 bytes (256 bits) for AES-256")
+	}
+
+	return key, nil
 }
 
 // getKeyFromKMS retrieves the key from KMS
 func (m *EncryptionMiddleware) getKeyFromKMS() ([]byte, error) {
-	// TODO: Implement KMS key retrieval
-	// For now, return a placeholder key
-	return []byte("01234567890123456789012345678901"), nil // 32 bytes for AES-256
+	// KMS integration would require AWS SDK or similar
+	// For now, return an error indicating KMS is not implemented
+	return nil, fmt.Errorf("KMS key retrieval not implemented - requires AWS SDK integration")
 }
 
 // generateKey generates a new encryption key
