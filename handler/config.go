@@ -11,7 +11,6 @@ import (
 
 // HandlerConfig represents handler-specific configuration
 type HandlerConfig struct {
-	BasePath    string                             `json:"base_path"`
 	Middlewares []string                           `json:"middlewares"` // Default middlewares for all categories
 	Categories  map[string]category.CategoryConfig `json:"categories"`
 	Security    middleware.SecurityConfig          `json:"security,omitempty"`
@@ -23,7 +22,7 @@ type HandlerConfig struct {
 
 func DefaultHandlerConfig(basePath string) HandlerConfig {
 	return HandlerConfig{
-		BasePath:   basePath,
+
 		Categories: make(map[string]category.CategoryConfig),
 		Security: middleware.SecurityConfig{
 			RequireAuth:        true,
@@ -40,9 +39,6 @@ func DefaultHandlerConfig(basePath string) HandlerConfig {
 }
 
 func (c *HandlerConfig) Validate() error {
-	if c.BasePath == "" {
-		return &errors.StorageError{Code: "INVALID_CONFIG", Message: "BasePath is required"}
-	}
 	if len(c.Categories) == 0 {
 		return &errors.StorageError{Code: "INVALID_CONFIG", Message: "At least one category must be defined"}
 	}

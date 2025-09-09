@@ -15,7 +15,6 @@ type StorageClient interface {
 
 	// Preview operations
 	Preview(ctx context.Context, req *PreviewRequest) (*PreviewResponse, error)
-	Thumbnail(ctx context.Context, req *ThumbnailRequest) (*ThumbnailResponse, error)
 	Stream(ctx context.Context, req *StreamRequest) (*StreamResponse, error)
 
 	// Security operations
@@ -173,13 +172,11 @@ type FileMetadata struct {
 	FileKey     string          `json:"file_key"`
 	FileSize    int64           `json:"file_size"`
 	ContentType string          `json:"content_type"`
-	Category    FileCategory    `json:"category"`
 	Namespace   string          `json:"namespace"`
 	EntityType  string          `json:"entity_type"`
 	EntityID    string          `json:"entity_id"`
 	UploadedBy  string          `json:"uploaded_by"`
 	UploadedAt  time.Time       `json:"uploaded_at"`
-	IsPublic    bool            `json:"is_public"`
 	Tags        []string        `json:"tags"`
 	Thumbnails  []ThumbnailInfo `json:"thumbnails"`
 	Version     int             `json:"version"`
@@ -198,24 +195,10 @@ type FileInfo struct {
 	EntityID    string                 `json:"entity_id"`
 	UploadedBy  string                 `json:"uploaded_by"`
 	UploadedAt  time.Time              `json:"uploaded_at"`
-	IsPublic    bool                   `json:"is_public"`
 	Thumbnails  []ThumbnailInfo        `json:"thumbnails"`
 	URL         string                 `json:"url,omitempty"`
 	Metadata    map[string]interface{} `json:"metadata"`
 }
-
-type FileCategory string
-
-const (
-	CategoryProfile    FileCategory = "profile"
-	CategoryDocument   FileCategory = "document"
-	CategoryAttachment FileCategory = "attachment"
-	CategoryTemp       FileCategory = "temp"
-	CategoryThumbnail  FileCategory = "thumbnail"
-	CategoryPublic     FileCategory = "public"
-	CategoryVehicle    FileCategory = "vehicle"
-	CategoryReceipt    FileCategory = "receipt"
-)
 
 type ThumbnailInfo struct {
 	Size     string `json:"size"` // e.g., "150x150"

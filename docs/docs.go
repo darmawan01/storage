@@ -1209,7 +1209,7 @@ const docTemplate = `{
         },
         "/files/{fileId}/thumbnail": {
             "get": {
-                "description": "Get a thumbnail of a file with specified size (not implemented in demo)",
+                "description": "Get a thumbnail of a file with specified size",
                 "consumes": [
                     "application/json"
                 ],
@@ -1237,7 +1237,21 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "Not implemented in demo",
+                        "description": "Thumbnail information",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "File or thumbnail not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
@@ -1710,21 +1724,9 @@ const docTemplate = `{
                 1,
                 1000,
                 1000000,
-                1000000000,
-                60000000000,
-                3600000000000,
-                1,
-                1000,
-                1000000,
                 1000000000
             ],
             "x-enum-varnames": [
-                "Nanosecond",
-                "Microsecond",
-                "Millisecond",
-                "Second",
-                "Minute",
-                "Hour",
                 "Nanosecond",
                 "Microsecond",
                 "Millisecond",

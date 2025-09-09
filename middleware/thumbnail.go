@@ -8,6 +8,7 @@ import (
 	"image/jpeg"
 	"image/png"
 	"io"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -101,8 +102,32 @@ func (m *ThumbnailMiddleware) Process(ctx context.Context, req *StorageRequest, 
 		return response, err
 	}
 
+	// Set the file key in the response if not already set
+	if response.FileKey == "" && req.FileKey != "" {
+		response.FileKey = req.FileKey
+	}
+
 	// Generate thumbnails after successful upload
 	if response.Success && response.FileKey != "" {
+		// Generate "fake" thumbnail info immediately with predictable keys
+		// This allows users to construct thumbnail URLs even before async processing completes
+		var thumbnails []ThumbnailInfo
+		for _, size := range m.config.ThumbnailSizes {
+			thumbnailKey := m.generateThumbnailKey(response.FileKey, size)
+
+			// Parse size to get width and height
+			width, height, _ := parseThumbnailSize(size)
+
+			thumbnails = append(thumbnails, ThumbnailInfo{
+				Size:     size,
+				URL:      thumbnailKey, // Just the thumbnail key, not a full URL
+				Width:    width,
+				Height:   height,
+				FileSize: 0, // Will be updated when async processing completes
+			})
+		}
+		response.Thumbnails = thumbnails
+
 		if m.config.AsyncProcessing && m.asyncProcessor != nil {
 			// Submit thumbnail job for async processing
 			job := ThumbnailJob{
@@ -118,24 +143,23 @@ func (m *ThumbnailMiddleware) Process(ctx context.Context, req *StorageRequest, 
 			// Set callback to update response when thumbnails are ready
 			job.Callback = func(thumbResponse *ThumbnailResponse) {
 				if thumbResponse.Success {
-					response.Thumbnails = thumbResponse.Thumbnails
-					fmt.Printf("✅ Async thumbnails generated for %s\n", response.FileKey)
-				} else {
-					fmt.Printf("❌ Async thumbnail generation failed for %s: %v\n", response.FileKey, thumbResponse.Error)
+					// Update the existing thumbnails with actual file sizes
+					for i, newThumb := range thumbResponse.Thumbnails {
+						if i < len(response.Thumbnails) {
+							response.Thumbnails[i].FileSize = newThumb.FileSize
+						}
+					}
 				}
 			}
 
 			if err := m.asyncProcessor.SubmitJob(job); err != nil {
-				fmt.Printf("Failed to submit thumbnail job: %v\n", err)
-			} else {
-				fmt.Printf("📋 Thumbnail job submitted for %s\n", response.FileKey)
+				// Log error but don't fail the upload
 			}
 		} else {
 			// Synchronous thumbnail generation
 			thumbnails, err := m.generateThumbnails(ctx, req, response.FileKey)
 			if err != nil {
 				// Log error but don't fail the upload
-				fmt.Printf("Failed to generate thumbnails: %v\n", err)
 			} else {
 				response.Thumbnails = thumbnails
 			}
@@ -336,15 +360,23 @@ func (m *ThumbnailMiddleware) uploadThumbnail(ctx context.Context, key string, d
 	return thumbnailURL, nil
 }
 
-// generateThumbnailKey generates a key for the thumbnail
+// generateThumbnailKey generates a key for the thumbnail using predictable naming
 func (m *ThumbnailMiddleware) generateThumbnailKey(originalKey, size string) string {
-	// Replace the original key with thumbnail prefix and size
-	parts := strings.Split(originalKey, "/")
-	if len(parts) > 0 {
-		parts[0] = m.config.ThumbnailPrefix
-		parts = append(parts, size)
+	// Use predictable naming pattern: original_file_key_512x512.png
+	// This makes it easy for users to construct thumbnail URLs
+
+	// Get the file extension from the original key
+	ext := filepath.Ext(originalKey)
+	if ext == "" {
+		ext = ".jpg" // Default to jpg for thumbnails
 	}
-	return strings.Join(parts, "/")
+
+	// Remove the extension from the original key
+	baseKey := strings.TrimSuffix(originalKey, ext)
+
+	// Create the thumbnail key with size suffix
+	thumbnailKey := fmt.Sprintf("%s_%s%s", baseKey, size, ext)
+	return thumbnailKey
 }
 
 // supportsThumbnail checks if the content type supports thumbnail generation

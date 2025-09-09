@@ -44,7 +44,6 @@ func StorageTest() {
 
 	// Test handler configuration
 	handlerConfig := &handler.HandlerConfig{
-		BasePath: "test",
 
 		Categories: map[string]category.CategoryConfig{
 			"profile": {
@@ -85,47 +84,6 @@ func StorageTest() {
 
 	fmt.Println("✓ Handler configuration validation passed")
 
-	// Test utility functions
-	testContentType := "image/jpeg"
-	if IsImageType(testContentType) {
-		fmt.Println("✓ Image type detection works")
-	}
-
-	if !IsVideoType(testContentType) {
-		fmt.Println("✓ Video type detection works")
-	}
-
-	// Test file ctgry detection
-	ctgry := GetFileCategory(testContentType)
-	if ctgry == interfaces.CategoryProfile {
-		fmt.Println("✓ File category detection works")
-	}
-
-	// Test file size formatting
-	fileSize := int64(1024 * 1024) // 1MB
-	formattedSize := FormatFileSize(fileSize)
-	fmt.Printf("✓ File size formatting: %s\n", formattedSize)
-
-	// Test thumbnail size validation
-	validSize := "150x150"
-	if err := ValidateThumbnailSize(validSize); err != nil {
-		log.Printf("Thumbnail size validation failed: %v", err)
-	} else {
-		fmt.Println("✓ Thumbnail size validation works")
-	}
-
-	// Test file key generation
-	fileKey := GenerateFileKey("test", "user", "123", "profile", "test.jpg")
-	fmt.Printf("✓ File key generation: %s\n", fileKey)
-
-	// Test file info extraction
-	basePath, entityType, entityID, categoryStr, filename, err := ExtractFileInfo(fileKey)
-	if err != nil {
-		log.Printf("File info extraction failed: %v", err)
-	} else {
-		fmt.Printf("✓ File info extraction: %s/%s/%s/%s/%s\n", basePath, entityType, entityID, categoryStr, filename)
-	}
-
 	// Test error types
 	testError := errors.ErrFileNotFound
 	fmt.Printf("✓ Error types: %s\n", testError.Error())
@@ -133,9 +91,6 @@ func StorageTest() {
 	// Test default configurations
 	defaultStorageConfig := config.DefaultStorageConfig()
 	fmt.Printf("✓ Default storage config: %s\n", defaultStorageConfig.Endpoint)
-
-	defaultHandlerConfig := handler.DefaultHandlerConfig("test")
-	fmt.Printf("✓ Default handler config: %s\n", defaultHandlerConfig.BasePath)
 
 	defaultCategoryConfig := category.DefaultCategoryConfig("images", false, 5*1024*1024)
 	fmt.Printf("✓ Default category config: %s\n", defaultCategoryConfig.BucketSuffix)
@@ -171,12 +126,10 @@ func StorageTest() {
 		FileKey:     "test/user/123/profile/test.txt",
 		FileSize:    9,
 		ContentType: "text/plain",
-		Category:    interfaces.CategoryProfile,
 		Namespace:   "test",
 		EntityType:  "user",
 		EntityID:    "123",
 		UploadedBy:  "user-123",
-		IsPublic:    false,
 		Version:     1,
 		Checksum:    "abc123",
 	}

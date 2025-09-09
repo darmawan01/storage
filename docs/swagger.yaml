@@ -272,21 +272,9 @@ definitions:
     - 1000
     - 1000000
     - 1000000000
-    - 60000000000
-    - 3600000000000
-    - 1
-    - 1000
-    - 1000000
-    - 1000000000
     format: int64
     type: integer
     x-enum-varnames:
-    - Nanosecond
-    - Microsecond
-    - Millisecond
-    - Second
-    - Minute
-    - Hour
     - Nanosecond
     - Microsecond
     - Millisecond
@@ -1103,8 +1091,7 @@ paths:
     get:
       consumes:
       - application/json
-      description: Get a thumbnail of a file with specified size (not implemented
-        in demo)
+      description: Get a thumbnail of a file with specified size
       parameters:
       - description: File ID
         in: path
@@ -1119,7 +1106,17 @@ paths:
       - application/json
       responses:
         "200":
-          description: Not implemented in demo
+          description: Thumbnail information
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: File or thumbnail not found
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal server error
           schema:
             additionalProperties: true
             type: object

@@ -352,7 +352,7 @@ func initStorage() {
 
 	// Register cat storage handler with metadata callback
 	_, err = storageRegistry.Register("cat", &handler.HandlerConfig{
-		BasePath: "cat",
+		Middlewares: []string{"validation", "thumbnail", "security", "audit"},
 		Categories: map[string]category.CategoryConfig{
 			"photo": {
 				BucketSuffix: "images",
@@ -419,7 +419,7 @@ func initStorage() {
 
 	// Register dog storage handler with metadata callback
 	_, err = storageRegistry.Register("dog", &handler.HandlerConfig{
-		BasePath: "dog",
+		Middlewares: []string{"thumbnail", "security", "audit"},
 		Categories: map[string]category.CategoryConfig{
 			"photo": {
 				BucketSuffix: "images",
@@ -583,6 +583,16 @@ func uploadCatFile(c *gin.Context) {
 		return
 	}
 
+	// Check if upload was successful
+	if !response.Success {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"error":   response.Error,
+			"data":    response,
+		})
+		return
+	}
+
 	// Show stored metadata if available
 	var metadataInfo interface{}
 	if metadata, err := metadataStorage.GetFileMetadata(response.FileKey); err == nil {
@@ -590,12 +600,10 @@ func uploadCatFile(c *gin.Context) {
 			"id":          metadata.ID,
 			"file_name":   metadata.FileName,
 			"file_key":    metadata.FileKey,
-			"category":    metadata.Category,
 			"entity_type": metadata.EntityType,
 			"entity_id":   metadata.EntityID,
 			"uploaded_by": metadata.UploadedBy,
 			"uploaded_at": metadata.UploadedAt,
-			"is_public":   metadata.IsPublic,
 			"thumbnails":  metadata.Thumbnails,
 		}
 	}
@@ -680,6 +688,16 @@ func uploadDogFile(c *gin.Context) {
 		return
 	}
 
+	// Check if upload was successful
+	if !response.Success {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"error":   response.Error,
+			"data":    response,
+		})
+		return
+	}
+
 	// Show stored metadata if available
 	var metadataInfo interface{}
 	if metadata, err := metadataStorage.GetFileMetadata(response.FileKey); err == nil {
@@ -687,12 +705,10 @@ func uploadDogFile(c *gin.Context) {
 			"id":          metadata.ID,
 			"file_name":   metadata.FileName,
 			"file_key":    metadata.FileKey,
-			"category":    metadata.Category,
 			"entity_type": metadata.EntityType,
 			"entity_id":   metadata.EntityID,
 			"uploaded_by": metadata.UploadedBy,
 			"uploaded_at": metadata.UploadedAt,
-			"is_public":   metadata.IsPublic,
 			"thumbnails":  metadata.Thumbnails,
 		}
 	}
@@ -1178,13 +1194,19 @@ func getThumbnail(c *gin.Context) {
 	// Try cat handler first
 	catHandler, err := storageRegistry.GetHandler("cat")
 	if err == nil && catHandler != nil {
-		req := &interfaces.ThumbnailRequest{
+		// Get file info which may contain thumbnail information
+		infoReq := &interfaces.InfoRequest{
 			FileKey: fileID,
-			Size:    size,
 		}
-		resp, err := catHandler.Thumbnail(c.Request.Context(), req)
-		if err == nil && resp.Success {
-			thumbnailURL = resp.ThumbnailURL
+		fileInfo, err := catHandler.GetFileInfo(c.Request.Context(), infoReq)
+		if err == nil && fileInfo != nil {
+			// Look for thumbnail of the requested size
+			for _, thumb := range fileInfo.Thumbnails {
+				if thumb.Size == size {
+					thumbnailURL = thumb.URL
+					break
+				}
+			}
 		}
 	}
 
@@ -1192,13 +1214,19 @@ func getThumbnail(c *gin.Context) {
 	if thumbnailURL == "" {
 		dogHandler, err := storageRegistry.GetHandler("dog")
 		if err == nil && dogHandler != nil {
-			req := &interfaces.ThumbnailRequest{
+			// Get file info which may contain thumbnail information
+			infoReq := &interfaces.InfoRequest{
 				FileKey: fileID,
-				Size:    size,
 			}
-			resp, err := dogHandler.Thumbnail(c.Request.Context(), req)
-			if err == nil && resp.Success {
-				thumbnailURL = resp.ThumbnailURL
+			fileInfo, err := dogHandler.GetFileInfo(c.Request.Context(), infoReq)
+			if err == nil && fileInfo != nil {
+				// Look for thumbnail of the requested size
+				for _, thumb := range fileInfo.Thumbnails {
+					if thumb.Size == size {
+						thumbnailURL = thumb.URL
+						break
+					}
+				}
 			}
 		}
 	}
@@ -1349,7 +1377,7 @@ func generateCatPresignedUploadURL(c *gin.Context) {
 	}
 
 	// Generate file key for cat photo
-	fileKey := fmt.Sprintf("cat/cat/%s/photo/%s", catID, req.FileKey)
+	fileKey := fmt.Sprintf("cat/%s/photo/%s", catID, req.FileKey)
 	expiresAt := time.Now().Add(req.Expires)
 
 	// For demo purposes, return a mock presigned URL
@@ -1858,7 +1886,7 @@ func generateDogPresignedUploadURL(c *gin.Context) {
 	}
 
 	// Generate file key for dog photo
-	fileKey := fmt.Sprintf("dog/dog/%s/photo/%s", dogID, req.FileKey)
+	fileKey := fmt.Sprintf("dog/%s/photo/%s", dogID, req.FileKey)
 	expiresAt := time.Now().Add(req.Expires)
 
 	// For demo purposes, return a mock presigned URL

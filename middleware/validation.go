@@ -9,6 +9,7 @@ import (
 	_ "image/png"
 	"io"
 	"path/filepath"
+	"slices"
 	"strings"
 )
 
@@ -145,7 +146,7 @@ func (m *ValidationMiddleware) validateBasicFile(req *StorageRequest) error {
 
 	// Check content type
 	if len(m.config.AllowedTypes) > 0 {
-		if !contains(m.config.AllowedTypes, req.ContentType) {
+		if !slices.Contains(m.config.AllowedTypes, req.ContentType) {
 			return fmt.Errorf("content type %s is not allowed, allowed types: %v", req.ContentType, m.config.AllowedTypes)
 		}
 	}
@@ -153,7 +154,7 @@ func (m *ValidationMiddleware) validateBasicFile(req *StorageRequest) error {
 	// Check file extension
 	if len(m.config.AllowedExtensions) > 0 {
 		ext := strings.ToLower(filepath.Ext(req.FileName))
-		if !contains(m.config.AllowedExtensions, ext) {
+		if !slices.Contains(m.config.AllowedExtensions, ext) {
 			return fmt.Errorf("file extension %s is not allowed, allowed extensions: %v", ext, m.config.AllowedExtensions)
 		}
 	}
@@ -398,7 +399,7 @@ func (m *ValidationMiddleware) isImageType(contentType string) bool {
 	imageTypes := []string{
 		"image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp", "image/bmp", "image/tiff",
 	}
-	return contains(imageTypes, contentType)
+	return slices.Contains(imageTypes, contentType)
 }
 
 func (m *ValidationMiddleware) isPDFType(contentType string) bool {
@@ -409,22 +410,12 @@ func (m *ValidationMiddleware) isVideoType(contentType string) bool {
 	videoTypes := []string{
 		"video/mp4", "video/webm", "video/avi", "video/mov", "video/wmv", "video/flv", "video/3gp", "video/quicktime",
 	}
-	return contains(videoTypes, contentType)
+	return slices.Contains(videoTypes, contentType)
 }
 
 func (m *ValidationMiddleware) isAudioType(contentType string) bool {
 	audioTypes := []string{
 		"audio/mpeg", "audio/mp3", "audio/wav", "audio/ogg", "audio/aac", "audio/flac", "audio/m4a",
 	}
-	return contains(audioTypes, contentType)
-}
-
-// Utility function
-func contains(slice []string, item string) bool {
-	for _, s := range slice {
-		if s == item {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(audioTypes, contentType)
 }

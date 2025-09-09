@@ -62,9 +62,18 @@ func (r *Registry) Initialize(config config.StorageConfig) error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(config.ConnectionTimeout)*time.Second)
 	defer cancel()
 
-	_, err = client.ListBuckets(ctx)
+	exists, err := client.BucketExists(ctx, config.BucketName)
 	if err != nil {
-		return fmt.Errorf("failed to connect to MinIO: %w", err)
+		return fmt.Errorf("failed to check bucket existence: %w", err)
+	}
+
+	if !exists {
+		err = client.MakeBucket(ctx, config.BucketName, minio.MakeBucketOptions{
+			Region: config.Region,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to create bucket %s: %w", config.BucketName, err)
+		}
 	}
 
 	return nil
@@ -85,10 +94,10 @@ func (r *Registry) Register(name string, config *handler.HandlerConfig) (*handle
 	}
 
 	handler := &handler.Handler{
-		Name:   name,
-		Config: config,
-		Client: r.client,
-		Region: r.config.Region,
+		Name:       name,
+		Config:     config,
+		Client:     r.client,
+		BucketName: r.config.BucketName,
 	}
 
 	// Initialize handler

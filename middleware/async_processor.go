@@ -8,6 +8,8 @@ import (
 	"image/jpeg"
 	"image/png"
 	"io"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -320,9 +322,24 @@ func (p *AsyncProcessor) uploadThumbnail(key string, data []byte, format string)
 	return thumbnailURL, nil
 }
 
-// generateThumbnailKey generates a key for the thumbnail
+// generateThumbnailKey generates a key for the thumbnail using predictable naming
 func (p *AsyncProcessor) generateThumbnailKey(originalKey, size string) string {
-	return fmt.Sprintf("thumbnails/%s_%s", originalKey, size)
+	// Use predictable naming pattern: original_file_key_512x512.png
+	// This makes it easy for users to construct thumbnail URLs
+
+	// Get the file extension from the original key
+	ext := filepath.Ext(originalKey)
+	if ext == "" {
+		ext = ".jpg" // Default to jpg for thumbnails
+	}
+
+	// Remove the extension from the original key
+	baseKey := strings.TrimSuffix(originalKey, ext)
+
+	// Create the thumbnail key with size suffix
+	thumbnailKey := fmt.Sprintf("%s_%s%s", baseKey, size, ext)
+
+	return thumbnailKey
 }
 
 // SubmitJob submits a thumbnail job for processing
